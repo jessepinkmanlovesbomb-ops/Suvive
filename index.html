@@ -79,6 +79,14 @@ canvas{display:block;position:fixed;inset:0;width:100%;height:100%;z-index:0}
  border-radius:50%;background:#101722dd;color:white;
  font-size:17px
 }
+#flyBtn{
+ pointer-events:auto;position:absolute;top:19px;right:68px;
+ min-width:46px;height:36px;padding:0 9px;
+ border:1px solid #ffffff70;border-radius:18px;
+ background:#101722dd;color:white;font-size:11px;font-weight:700;
+ letter-spacing:.5px
+}
+#flyBtn.active{background:#176078;border-color:#b5f6ff;box-shadow:0 0 12px #55dfff55}
 #settingsPanel{
  pointer-events:auto;position:absolute;top:70px;right:14px;
  width:220px;padding:16px;background:#101722ee;
@@ -118,6 +126,7 @@ canvas{display:block;position:fixed;inset:0;width:100%;height:100%;z-index:0}
  <div id="cross"></div>
 
  <button id="settingsBtn">S</button>
+ <button id="flyBtn" aria-pressed="false">FLY</button>
 
  <div id="settingsPanel" hidden>
   <label>Look sensitivity <span id="sensitivityValue">100%</span></label>
@@ -149,26 +158,28 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.166.1/examples/
 
 /* ---------------- CONFIGURATION ---------------- */
 
-const AREA_WIDTH=30;
-const AREA_LENGTH=74;
+const AREA_WIDTH=26;
+const AREA_LENGTH=42;
 const HEIGHT=4;
-const FLOOR_SPACING=6;
-const FLOOR_COUNT=10;
-const LIFT_Z=38.3;
+const FLOOR_SPACING=4.2;
+const FLOOR_COUNT=11;
+const LIFT_X=0;
+const LIFT_Z=19.3;
 
 let floorLevel=0;
 let buildingLevel=0;
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const deckLabel=deck=>deck===0?'R':String(deck);
 
 /* ---------------- RENDERER ---------------- */
 
 const renderer=new THREE.WebGLRenderer({
- antialias:true,
+ antialias:false,
  powerPreference:'high-performance'
 });
 
-renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.25));
 renderer.setSize(innerWidth,innerHeight);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.NoToneMapping;
@@ -183,7 +194,7 @@ const camera=new THREE.PerspectiveCamera(
  72,innerWidth/innerHeight,0.08,220
 );
 
-camera.position.set(0,1.62,0);
+camera.position.set(0,1.62,-23);
 scene.add(camera);
 
 scene.add(new THREE.HemisphereLight(0x9db8ea,0x111827,1.8));
@@ -230,6 +241,8 @@ const solidWallsByLevel=Array.from(
  {length:FLOOR_COUNT},()=>[]
 );
 const wallGeometryChunks=new Map();
+const deckRenderableMeshes=Array.from({length:FLOOR_COUNT},()=>[]);
+const floorSlabMeshes=[];
 const corridorLights=[];
 
 for(const z of [-18,18]){
@@ -244,6 +257,7 @@ for(const z of [-18,18]){
 function wall(x,y,z,w,h,d,material=wallMat,solid=true){
  const geometry=new THREE.BoxGeometry(w,h,d);
  geometry.translate(x,buildingLevel*FLOOR_SPACING+y,z);
+ geometry.userData.deck=buildingLevel;
 
  const chunkX=Math.floor((x+AREA_WIDTH/2)/12);
  const chunkZ=Math.floor((z+AREA_LENGTH/2)/12);
@@ -291,7 +305,12 @@ function buildWallChunks(){
   merged.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
   merged.setIndex(indices);
   merged.computeBoundingSphere();
-  scene.add(new THREE.Mesh(merged,wallMat));
+
+  const deck=Number(geometries[0].userData.deck);
+  const mesh=new THREE.Mesh(merged,wallMat);
+  mesh.userData.deck=deck;
+  deckRenderableMeshes[deck].push(mesh);
+  scene.add(mesh);
  }
  wallGeometryChunks.clear();
 }
@@ -301,44 +320,180 @@ function buildBuilding(){
  const halfWidth=AREA_WIDTH/2;
  const halfLength=AREA_LENGTH/2;
  const hallHalf=2.2;
- const roomCount=9;
+ const roomCount=5;
  const roomLength=AREA_LENGTH/roomCount;
+
+ const instanceTransform=new THREE.Object3D();
 
  for(let level=0;level<FLOOR_COUNT;level++){
 
   buildingLevel=level;
   const baseY=level*FLOOR_SPACING;
 
-  const floor=new THREE.Mesh(
-   new THREE.BoxGeometry(AREA_WIDTH,.18,AREA_LENGTH),
-   floorMat
+  // Keep each deck in its own mesh so the camera frustum can cull floors above/below.
+  const floors=new THREE.InstancedMesh(
+   new THREE.BoxGeometry(AREA_WIDTH,.18,AREA_LENGTH),floorMat,1
   );
-  floor.position.set(0,baseY-.09,0);
-  scene.add(floor);
-
-  const roof=new THREE.Mesh(
-   new THREE.BoxGeometry(AREA_WIDTH,.15,AREA_LENGTH),
-   roofMat
+  const roofs=new THREE.InstancedMesh(
+   new THREE.BoxGeometry(AREA_WIDTH,.15,AREA_LENGTH),roofMat,1
   );
-  roof.position.set(0,baseY+HEIGHT+.08,0);
-  scene.add(roof);
+  const doorLines=new THREE.InstancedMesh(
+   new THREE.BoxGeometry(.045,.035,2.4),
+   blueprintTrim,roomCount*2
+  );
+  let doorLineIndex=0;
 
-  wall(-halfWidth+.1,HEIGHT/2,0,.2,HEIGHT,AREA_LENGTH);
-  wall(halfWidth-.1,HEIGHT/2,0,.2,HEIGHT,AREA_LENGTH);
-  wall(0,HEIGHT/2,-halfLength+.1,AREA_WIDTH,HEIGHT,.2);
+  instanceTransform.position.set(0,baseY-.09,0);
+  instanceTransform.updateMatrix();
+  floors.setMatrixAt(0,instanceTransform.matrix);
 
-  /* End-wall opening leading into the lift behind the corridor */
-  const liftOpeningWidth=4.2;
-  const sideWallWidth=(AREA_WIDTH-liftOpeningWidth)/2;
-  wall(-(liftOpeningWidth/2+sideWallWidth/2),HEIGHT/2,
-   halfLength-.1,sideWallWidth,HEIGHT,.2);
-  wall(liftOpeningWidth/2+sideWallWidth/2,HEIGHT/2,
-   halfLength-.1,sideWallWidth,HEIGHT,.2);
-  wall(0,3.5,halfLength-.1,liftOpeningWidth,1,.2);
+  instanceTransform.position.set(0,baseY+HEIGHT+.08,0);
+  instanceTransform.updateMatrix();
+  roofs.setMatrixAt(0,instanceTransform.matrix);
+  // Intermediate roofs overlap the next deck's floor slab and cause z-fighting.
+  roofs.count=level===FLOOR_COUNT-1?1:0;
 
-  /* Room walls and doorways */
+  // Use instancing so the exterior windows add only two draw calls per deck.
+  const glassMat=new THREE.MeshBasicMaterial({
+   color:0x5cbbef,transparent:true,opacity:.2,
+   side:THREE.DoubleSide,depthWrite:false
+  });
+  const windowFrameMat=new THREE.MeshStandardMaterial({
+   color:0x263d55,metalness:.7,roughness:.32,
+   emissive:0x102638,emissiveIntensity:.5
+  });
+  const windowPanes=new THREE.InstancedMesh(
+   new THREE.BoxGeometry(.055,3,5.8),glassMat,roomCount*2
+  );
+  const windowFrames=new THREE.InstancedMesh(
+   new THREE.BoxGeometry(1,1,1),windowFrameMat,roomCount*8
+  );
+  const windowTransform=new THREE.Object3D();
+  let paneIndex=0;
+  let frameIndex=0;
 
   for(const side of [-1,1]){
+   const outerX=side*(halfWidth-.1);
+   wall(outerX,.25,0,.2,.5,AREA_LENGTH);
+   wall(outerX,3.7,0,.2,.6,AREA_LENGTH);
+
+   for(let i=0;i<roomCount;i++){
+    const center=-halfLength+(i+.5)*roomLength;
+    const windowWidth=5.8;
+    const pierDepth=(roomLength-windowWidth)/2;
+
+    wall(outerX,2,center-roomLength/2+pierDepth/2,
+     .2,3,pierDepth);
+    wall(outerX,2,center+roomLength/2-pierDepth/2,
+     .2,3,pierDepth);
+
+    const paneX=side*(halfWidth-.13);
+    windowTransform.position.set(paneX,baseY+2,center);
+    windowTransform.scale.set(1,1,1);
+    windowTransform.updateMatrix();
+    windowPanes.setMatrixAt(paneIndex++,windowTransform.matrix);
+
+    // The pane remains solid to the player even though it is see-through.
+    solidWallsByLevel[level].push({
+     x:paneX,y:2,z:center,w:.055,d:windowWidth,h:3
+    });
+
+    const frameX=side*(halfWidth-.16);
+    const frameParts=[
+     [ .09,.12,windowWidth+.16,frameX,baseY+.5,center],
+     [ .09,.12,windowWidth+.16,frameX,baseY+3.5,center],
+     [ .09,3,.12,frameX,baseY+2,center-windowWidth/2],
+     [ .09,3,.12,frameX,baseY+2,center+windowWidth/2]
+    ];
+    for(const [w,h,d,x,y,z] of frameParts){
+     windowTransform.position.set(x,y,z);
+     windowTransform.scale.set(w,h,d);
+     windowTransform.updateMatrix();
+     windowFrames.setMatrixAt(frameIndex++,windowTransform.matrix);
+    }
+   }
+  }
+
+  windowPanes.instanceMatrix.needsUpdate=true;
+  windowFrames.instanceMatrix.needsUpdate=true;
+  windowPanes.userData.deck=level;
+  windowFrames.userData.deck=level;
+  deckRenderableMeshes[level].push(windowPanes,windowFrames);
+  scene.add(windowPanes,windowFrames);
+
+  /* Reception opens to the exterior; upper decks keep a sealed end wall. */
+  if(level===0){
+   const entranceWidth=4.2;
+   const sideWallWidth=(AREA_WIDTH-entranceWidth)/2;
+   wall(-(entranceWidth/2+sideWallWidth/2),HEIGHT/2,
+    -halfLength+.1,sideWallWidth,HEIGHT,.2);
+   wall(entranceWidth/2+sideWallWidth/2,HEIGHT/2,
+    -halfLength+.1,sideWallWidth,HEIGHT,.2);
+   wall(0,3.5,-halfLength+.1,entranceWidth,1,.2);
+
+   // Fit the far-end opening tightly around the lift to avoid side gaps.
+   const liftOpeningWidth=3.2;
+   const liftSideWallWidth=(AREA_WIDTH-liftOpeningWidth)/2;
+   wall(-(liftOpeningWidth/2+liftSideWallWidth/2),HEIGHT/2,
+    halfLength-.1,liftSideWallWidth,HEIGHT,.2);
+   wall(liftOpeningWidth/2+liftSideWallWidth/2,HEIGHT/2,
+    halfLength-.1,liftSideWallWidth,HEIGHT,.2);
+   wall(0,3.5,halfLength-.1,liftOpeningWidth,1,.2);
+  }else{
+   const endWindowWidth=5.8;
+   const endWindowHeight=2.4;
+   const endWindowY=2;
+   const endWallZ=[-halfLength+.1,halfLength-.1];
+
+   for(const z of endWallZ){
+    const sideWidth=(AREA_WIDTH-endWindowWidth)/2;
+    wall(-(endWindowWidth/2+sideWidth/2),HEIGHT/2,z,
+     sideWidth,HEIGHT,.2);
+    wall(endWindowWidth/2+sideWidth/2,HEIGHT/2,z,
+     sideWidth,HEIGHT,.2);
+    const windowBottom=endWindowY-endWindowHeight/2;
+    const windowTop=endWindowY+endWindowHeight/2;
+    wall(0,(windowTop+HEIGHT)/2,z,
+     endWindowWidth,HEIGHT-windowTop,.2);
+    wall(0,windowBottom/2,z,
+     endWindowWidth,windowBottom,.2);
+
+    const paneZ=z+(z<0?.12:-.12);
+    const endPane=new THREE.Mesh(
+     new THREE.BoxGeometry(endWindowWidth,endWindowHeight,.055),
+     glassMat
+    );
+    endPane.position.set(0,baseY+endWindowY,paneZ);
+    endPane.userData.deck=level;
+    deckRenderableMeshes[level].push(endPane);
+    scene.add(endPane);
+    solidWallsByLevel[level].push({
+     x:0,y:endWindowY,z:paneZ,
+     w:endWindowWidth,d:.055,h:endWindowHeight
+    });
+
+    const frameZ=z+(z<0?.16:-.16);
+    const endFrameParts=[
+     [endWindowWidth+.16,.12,.09,0,baseY+endWindowY-endWindowHeight/2,frameZ],
+     [endWindowWidth+.16,.12,.09,0,baseY+endWindowY+endWindowHeight/2,frameZ],
+     [.12,endWindowHeight,.09,-endWindowWidth/2,baseY+endWindowY,frameZ],
+     [.12,endWindowHeight,.09,endWindowWidth/2,baseY+endWindowY,frameZ]
+    ];
+    for(const [w,h,d,x,y,framePartZ] of endFrameParts){
+     const frame=new THREE.Mesh(
+      new THREE.BoxGeometry(w,h,d),windowFrameMat
+     );
+     frame.position.set(x,y,framePartZ);
+     frame.userData.deck=level;
+     deckRenderableMeshes[level].push(frame);
+     scene.add(frame);
+    }
+   }
+  }
+
+  /* Room walls and doorways (the reception deck stays open). */
+
+  if(level>0) for(const side of [-1,1]){
 
    const boundary=side*hallHalf;
    const roomDepth=halfWidth-hallHalf;
@@ -377,17 +532,19 @@ function buildBuilding(){
      );
     }
 
-    const doorLine=new THREE.Mesh(
-     new THREE.BoxGeometry(.045,.035,gap),
-     blueprintTrim
-    );
-
-    doorLine.position.set(
+    instanceTransform.position.set(
      boundary+side*.16,baseY+.025,center
     );
-
-    scene.add(doorLine);
+    instanceTransform.updateMatrix();
+    doorLines.setMatrixAt(doorLineIndex++,instanceTransform.matrix);
    }
+  }
+  if(level===0)doorLines.count=0;
+
+  if(level===0){
+   // Reception counter stays clear of the lift and the far-side exit.
+   wall(-6,.52,-11,4.2,1.04,.9);
+   wall(-6,1.08,-11,4.5,.12,1.05);
   }
 
   /* Corridor ceiling lights */
@@ -405,7 +562,13 @@ function buildBuilding(){
   }
 
   strips.instanceMatrix.needsUpdate=true;
-  scene.add(strips);
+  floors.instanceMatrix.needsUpdate=true;
+  roofs.instanceMatrix.needsUpdate=true;
+  doorLines.instanceMatrix.needsUpdate=true;
+
+  floorSlabMeshes[level]=floors;
+  deckRenderableMeshes[level].push(strips,floors,roofs,doorLines);
+  scene.add(strips,floors,roofs,doorLines);
  }
 
  buildingLevel=0;
@@ -488,11 +651,13 @@ function updateTravelDisplay(label){
  liftTravelContext.fillRect(0,0,256,128);
 
  liftTravelContext.fillStyle='#83caff';
- liftTravelContext.font='bold 48px system-ui';
+ liftTravelContext.font=label==='R'
+  ?'bold 34px system-ui'
+  :'bold 48px system-ui';
  liftTravelContext.textAlign='center';
  liftTravelContext.textBaseline='middle';
 
- liftTravelContext.fillText('FLOOR '+label,128,64);
+ liftTravelContext.fillText(label==='R'?'RECEPTION':'FLOOR '+label,128,64);
  liftTravelTexture.needsUpdate=true;
 }
 
@@ -526,16 +691,16 @@ function buildLift(){
 
  /* Rear wall */
 
- addLiftBox(3.2,2.8,.16,0,1.5,1.62,wallMat);
+ addLiftBox(3.2,3.8,.16,0,1.95,1.62,wallMat);
 
  for(const x of [-1.53,1.53]){
-  addLiftBox(.14,2.8,3.1,x,1.5,0,metal);
-  addLiftBox(.045,2.35,.065,x*.94,1.5,-1.48,liftTrim);
+  addLiftBox(.14,3.8,3.1,x,1.95,0,metal);
+  addLiftBox(.045,3.7,.065,x*.94,1.95,-1.48,liftTrim);
  }
 
  /* Roof */
 
- addLiftBox(3.18,.18,3.2,0,2.88,0,darkMetal);
+ addLiftBox(3.18,.18,3.2,0,3.88,0,darkMetal);
  addLiftBox(1.45,.035,2.25,0,2.78,-.05,liftTrim);
  addLiftBox(1.1,.025,1.9,0,2.755,-.05,liftGlow);
 
@@ -570,11 +735,11 @@ function buildLift(){
 
  for(let deck=0;deck<FLOOR_COUNT;deck++){
 
-  const column=deck%2;
-  const row=Math.floor(deck/2);
+  const column=deck%3;
+  const row=Math.floor(deck/3);
 
-  const x=column===0?-.34:.34;
-  const y=2.12-row*.29;
+  const x=column===0?-.42:(column===1?0:.42);
+  const y=2.12-row*.32;
 
   addLiftBox(.3,.22,.07,x,y,1.475,darkMetal);
 
@@ -604,7 +769,7 @@ function buildLift(){
   ctx.font='bold 72px system-ui';
   ctx.textAlign='center';
   ctx.textBaseline='middle';
-  ctx.fillText(deck===9?'0':String(deck+1),64,66);
+  ctx.fillText(deck===0?'R':String(deck),64,66);
 
   const texture=new THREE.CanvasTexture(canvas);
   texture.colorSpace=THREE.SRGBColorSpace;
@@ -649,19 +814,19 @@ function buildLift(){
   liftCar.add(door);
 
   const panel=new THREE.Mesh(
-   new THREE.BoxGeometry(1.38,2.82,.1),
+   new THREE.BoxGeometry(1.38,3.82,.1),
    darkMetal
   );
 
-  panel.position.y=1.5;
+  panel.position.y=1.95;
   door.add(panel);
 
   const edge=new THREE.Mesh(
-   new THREE.BoxGeometry(.035,2.7,.025),
+   new THREE.BoxGeometry(.035,3.7,.025),
    liftTrim
   );
 
-  edge.position.set(-side*.65,1.5,-.06);
+  edge.position.set(-side*.65,1.95,-.06);
   door.add(edge);
 
   liftDoorPanels.push({group:door,side});
@@ -700,19 +865,21 @@ function buildLift(){
  light.position.set(0,2.35,0);
  liftCar.add(light);
 
- liftCar.position.set(0,0,LIFT_Z);
+ // Face the cabin doors inward from the far reception opening (-Z).
+ liftCar.rotation.y=0;
+ liftCar.position.set(LIFT_X,0,LIFT_Z);
 
  for(let level=0;level<FLOOR_COUNT;level++){
 
   solidWallsByLevel[level].push(
-   {x:-1.53,y:1.5,z:LIFT_Z,w:.14,d:3.1,h:2.8},
-   {x:1.53,y:1.5,z:LIFT_Z,w:.14,d:3.1,h:2.8},
-   {x:0,y:1.5,z:LIFT_Z+1.62,w:3.2,d:.14,h:2.8}
+   {x:LIFT_X-1.53,y:1.95,z:LIFT_Z,w:.14,d:3.1,h:3.8},
+   {x:LIFT_X+1.53,y:1.95,z:LIFT_Z,w:.14,d:3.1,h:3.8},
+   {x:LIFT_X,y:1.95,z:LIFT_Z+1.62,w:3.2,d:.14,h:3.8}
   );
  }
 
- updateDisplay('1');
- updateTravelDisplay('1');
+ updateDisplay('R');
+ updateTravelDisplay('R');
 }
 
 /* ---------------- INPUT SYSTEM ---------------- */
@@ -723,6 +890,7 @@ const keys={};
 
 let isRunning=false;
 let isCrouching=false;
+let flyMode=false;
 
 window.addEventListener('keydown',e=>{
 
@@ -737,7 +905,7 @@ window.addEventListener('keydown',e=>{
 
  if(e.repeat)return;
 
- if(e.code==='Space'&&grounded&&!liftMoving){
+ if(e.code==='Space'&&grounded&&!liftMoving&&!flyMode){
   jumpVelocity=8.6;
   grounded=false;
  }
@@ -843,6 +1011,13 @@ sensitivitySlider.addEventListener('input',()=>{
  sensitivityValue.textContent=sensitivitySlider.value+'%';
 });
 
+const flyBtn=document.getElementById('flyBtn');
+flyBtn.addEventListener('click',()=>{
+ flyMode=!flyMode;
+ flyBtn.classList.toggle('active',flyMode);
+ flyBtn.setAttribute('aria-pressed',String(flyMode));
+});
+
 /* ---------------- MOBILE JOYSTICK ---------------- */
 
 const base=document.getElementById('base');
@@ -883,10 +1058,11 @@ base.addEventListener('pointerdown',e=>{
  moveStick(e);
 });
 
-base.addEventListener('pointermove',e=>{
+window.addEventListener('pointermove',e=>{
  if(e.pointerId!==joyId)return;
+ e.preventDefault();
  moveStick(e);
-});
+},{passive:false});
 
 function stopJoy(e){
 
@@ -901,8 +1077,8 @@ function stopJoy(e){
  }
 }
 
-base.addEventListener('pointerup',stopJoy);
-base.addEventListener('pointercancel',stopJoy);
+window.addEventListener('pointerup',stopJoy);
+window.addEventListener('pointercancel',stopJoy);
 base.addEventListener('lostpointercapture',stopJoy);
 
 /* Run button */
@@ -973,14 +1149,14 @@ function selectLiftFloor(deck){
 
  selectedFloor=deck;
 
- updateDisplay(String(deck+1));
+ updateDisplay(deckLabel(deck));
 }
 
 function startLift(destination){
 
  if(liftMoving)return;
 
-  const near=Math.abs(camera.position.x)<2.5&&
+  const near=Math.abs(camera.position.x-LIFT_X)<2.5&&
   Math.abs(camera.position.z-LIFT_Z)<3.2;
 
 
@@ -1088,6 +1264,9 @@ let fpsElapsed=0;
 const fpsDisplay=document.getElementById('fps');
 let walkPhase=0;
 let bobPower=0;
+let visibleDeck=-2;
+let visibleFlyMode=null;
+let visibleOutside=null;
 
 function animate(now){
 
@@ -1107,13 +1286,13 @@ function animate(now){
  /* Position checks */
 
  const nearLift=
-  Math.abs(camera.position.x)<2.5&&
+  Math.abs(camera.position.x-LIFT_X)<2.5&&
   Math.abs(camera.position.z-LIFT_Z)<3.2;
 
  const insideLift=
-  Math.abs(camera.position.x)<1.2&&
-  camera.position.z>LIFT_Z-1.55&&
-  camera.position.z<LIFT_Z+1.25;
+  Math.abs(camera.position.x-LIFT_X)<1.2&&
+  camera.position.z>LIFT_Z-1.25&&
+  camera.position.z<LIFT_Z+1.55;
 
  /* Lift doors */
 
@@ -1138,7 +1317,7 @@ function animate(now){
 
   if(!liftTravelStarted){
 
-   camera.position.x=clamp(camera.position.x,-1,1);
+   camera.position.x=clamp(camera.position.x,LIFT_X-1,LIFT_X+1);
    camera.position.z=LIFT_Z;
 
    if(liftDoorProgress<=.005){
@@ -1188,7 +1367,7 @@ function animate(now){
   );
  }
 
- updateTravelDisplay(String(shownFloor+1));
+ updateTravelDisplay(deckLabel(shownFloor));
 
  /* Combined keyboard and joystick input */
 
@@ -1233,62 +1412,68 @@ function animate(now){
 
  /* Camera-relative movement */
 
- const desiredX=camera.position.x+(
-  Math.cos(yaw)*strafe-Math.sin(yaw)*forward
- )*speed*dt;
+ if(moving){
+  if(flyMode){
+   const desiredX=camera.position.x+(
+    Math.cos(yaw)*strafe-Math.sin(yaw)*Math.cos(pitch)*forward
+   )*speed*dt;
+   const desiredY=camera.position.y+Math.sin(pitch)*forward*speed*dt;
+   const desiredZ=camera.position.z+(
+    -Math.sin(yaw)*strafe-Math.cos(yaw)*Math.cos(pitch)*forward
+   )*speed*dt;
 
- const desiredZ=camera.position.z+(
-  -Math.sin(yaw)*strafe-Math.cos(yaw)*forward
- )*speed*dt;
+   camera.position.set(desiredX,desiredY,desiredZ);
+  }else{
+   const desiredX=camera.position.x+(
+    Math.cos(yaw)*strafe-Math.sin(yaw)*forward
+   )*speed*dt;
 
- const nextX=clamp(
-  desiredX,-AREA_WIDTH/2+.55,AREA_WIDTH/2-.55
- );
+   const desiredZ=camera.position.z+(
+    -Math.sin(yaw)*strafe-Math.cos(yaw)*forward
+   )*speed*dt;
 
- const maxZ=Math.abs(nextX)<1.8
-  ?LIFT_Z+1.2
-  :AREA_LENGTH/2-.55;
+   // Keep outdoor walking within the spaceport pad around the building.
+   const nextX=clamp(desiredX,-48,48);
+   const nextZ=clamp(desiredZ,-63,63);
 
- const nextZ=clamp(
-  desiredZ,-AREA_LENGTH/2+.55,maxZ
- );
+   /* Collision */
 
- /* Collision */
+   const blocked=(x,z)=>{
 
- const blocked=(x,z)=>{
+    const wallHit=solidWallsByLevel[floorLevel].some(w=>
+     Math.abs(x-w.x)<w.w/2+.28&&
+     Math.abs(z-w.z)<w.d/2+.28&&
+     jumpHeight<w.y+w.h/2&&
+     jumpHeight+playerHeight>w.y-w.h/2
+    );
 
-  const wallHit=solidWallsByLevel[floorLevel].some(w=>
-   Math.abs(x-w.x)<w.w/2+.28&&
-   Math.abs(z-w.z)<w.d/2+.28&&
-   jumpHeight<w.y+w.h/2&&
-   jumpHeight+playerHeight>w.y-w.h/2
-  );
+    const doorHit=(
+     !liftMoving&&
+     liftDoorProgress<.98&&
+     Math.abs(z-(LIFT_Z-1.53))<.35&&
+     liftDoorPanels.some(door=>
+      Math.abs(x-(LIFT_X+door.group.position.x))<.69
+     )
+    );
 
-  const doorHit=(
-   !liftMoving&&
-   liftDoorProgress<.98&&
-   Math.abs(z-(LIFT_Z-1.53))<.35&&
-   liftDoorPanels.some(door=>
-    Math.abs(x-door.group.position.x)<.69
-   )
-  );
+    return wallHit||doorHit;
+   };
 
-  return wallHit||doorHit;
- };
+   if(!blocked(nextX,camera.position.z)){
+    camera.position.x=nextX;
+   }
 
- if(!blocked(nextX,camera.position.z)){
-  camera.position.x=nextX;
- }
-
- if(!blocked(camera.position.x,nextZ)){
-  camera.position.z=nextZ;
+   if(!blocked(camera.position.x,nextZ)){
+    camera.position.z=nextZ;
+   }
+  }
  }
 
  /* Jump physics */
 
  const previousHeight=jumpHeight;
 
- if(!grounded){
+ if(!flyMode&&!grounded){
 
   jumpVelocity-=24.5*dt;
   jumpHeight+=jumpVelocity*dt;
@@ -1317,16 +1502,18 @@ function animate(now){
 
  const bobAmount=crouching?.018:(running?.075:.04);
 
- camera.position.y=
-  floorLevel*FLOOR_SPACING+
-  liftOffset+
-  playerHeight+
-  jumpHeight+
-  Math.sin(walkPhase*2)*bobAmount*bobPower;
+ if(!flyMode){
+  camera.position.y=
+   floorLevel*FLOOR_SPACING+
+   liftOffset+
+   playerHeight+
+   jumpHeight+
+   Math.sin(walkPhase*2)*bobAmount*bobPower;
+ }
 
  /* HUD */
 
- tag.textContent='DECK '+(floorLevel+1);
+ tag.textContent=floorLevel===0?'RECEPTION':'DECK '+floorLevel;
 
  /* Camera */
 
@@ -1339,6 +1526,28 @@ function animate(now){
 
  updateLiftAim(insideLift);
 
+ const activeDeck=liftMoving?-1:floorLevel;
+ const outsideBuilding=(
+  Math.abs(camera.position.x)>AREA_WIDTH/2||
+  Math.abs(camera.position.z)>AREA_LENGTH/2
+ );
+ if(activeDeck!==visibleDeck||flyMode!==visibleFlyMode||outsideBuilding!==visibleOutside){
+  visibleDeck=activeDeck;
+  visibleFlyMode=flyMode;
+  visibleOutside=outsideBuilding;
+     for(let level=0;level<FLOOR_COUNT;level++){
+   const deckVisible=flyMode||outsideBuilding||level===activeDeck;
+   for(const mesh of deckRenderableMeshes[level]){
+    mesh.visible=deckVisible;
+   }
+   if(floorSlabMeshes[level]){
+    floorSlabMeshes[level].visible=deckVisible||(
+     !flyMode&&!outsideBuilding&&level===activeDeck+1
+    );
+   }
+  }
+ }
+
  renderer.render(scene,camera);
 }
 
@@ -1346,9 +1555,9 @@ function animate(now){
 
 const gltfLoader = new GLTFLoader();
 
-// Extra light inside the first left-side cabin room.
+// Extra light inside the first left-side cabin room on deck 1.
 const cabinRoomLight = new THREE.PointLight(0xa8d9ff, 42, 13, 1.5);
-cabinRoomLight.position.set(-4.2, 2.8, -32.9);
+cabinRoomLight.position.set(-8, FLOOR_SPACING+2.8, -16.8);
 scene.add(cabinRoomLight);
 
 gltfLoader.load(
@@ -1357,9 +1566,9 @@ gltfLoader.load(
   function(gltf) {
     const cabin = gltf.scene;
 
-    // Keep it on the ground floor, just inside the first room's doorway.
-    cabin.position.set(0, 1, -5);
-    cabin.scale.set(1, 1, 1);
+    // Keep the cabin inside the first room above reception.
+    cabin.position.set(-8, FLOOR_SPACING, -16.8);
+    cabin.scale.set(2, 2, 2);
 
     cabin.traverse(function(obj) {
       if (obj.isMesh) {
@@ -1382,11 +1591,139 @@ gltfLoader.load(
   }
 );
 
+/* ---------------- SPACE EXTERIOR ---------------- */
+
+function buildSpaceExterior(){
+ // A broad landing pad makes the area outside the reception entrance walkable.
+ const landingPad=new THREE.Mesh(
+  new THREE.BoxGeometry(100,.35,130),
+  new THREE.MeshStandardMaterial({
+   color:0x102858,metalness:.45,roughness:.82
+  })
+ );
+ // Keep the pad surface below reception's floor to avoid coplanar flicker.
+ landingPad.position.set(0,-.24,0);
+ scene.add(landingPad);
+
+ // A luminous blue-teal walkway leads straight out through the reception entrance.
+ const pathMat=new THREE.MeshStandardMaterial({
+  color:0x087c9b,emissive:0x063b58,emissiveIntensity:.8,
+  metalness:.35,roughness:.55
+ });
+ const path=new THREE.Mesh(
+  new THREE.BoxGeometry(7,.08,27),pathMat
+ );
+ path.position.set(0,-.015,-34.5);
+ scene.add(path);
+
+ const pathEdgeMat=new THREE.MeshStandardMaterial({
+  color:0x65edff,emissive:0x28cfff,emissiveIntensity:2.4,
+  metalness:.25,roughness:.3
+ });
+ for(const x of [-3.25,3.25]){
+  const edge=new THREE.Mesh(
+   new THREE.BoxGeometry(.1,.045,27),pathEdgeMat
+  );
+  edge.position.set(x,.045,-34.5);
+  scene.add(edge);
+ }
+
+ // Blue-white lamp posts mark and illuminate the routes around the building.
+ const poleMat=new THREE.MeshStandardMaterial({
+  color:0x174b86,emissive:0x071e48,emissiveIntensity:.45,
+  metalness:.65,roughness:.38
+ });
+ const fixtureMat=new THREE.MeshStandardMaterial({
+  color:0x79eaff,emissive:0x35dfff,emissiveIntensity:2.6
+ });
+ const lampPositions=[
+  [-5.4,-24],[5.4,-24],
+  [-5.4,-31],[5.4,-31],
+  [-5.4,-38],[5.4,-38],
+  [-5.4,-45],[5.4,-45],
+  
+  [-10,-49],[10,-49],
+  [-19,-20],[19,-20],
+  [-19,20],[19,20],
+  [-10,49],[10,49]
+ ];
+
+ for(const [x,z] of lampPositions){
+  const pole=new THREE.Mesh(
+   new THREE.CylinderGeometry(.11,.16,4.6,8),poleMat
+  );
+  pole.position.set(x,2.23,z);
+  scene.add(pole);
+
+  const arm=new THREE.Mesh(
+   new THREE.BoxGeometry(.8,.12,.16),poleMat
+  );
+  arm.position.set(x+(x<0?.3:-.3),4.45,z);
+  scene.add(arm);
+
+  const fixture=new THREE.Mesh(
+   new THREE.BoxGeometry(.7,.16,.42),fixtureMat
+  );
+  fixture.position.set(x+(x<0?.62:-.62),4.38,z);
+  scene.add(fixture);
+
+  const light=new THREE.PointLight(0x91cfff,48,27,1.6);
+  light.position.set(fixture.position.x,4.2,z);
+  scene.add(light);
+
+  solidWallsByLevel[0].push({x,y:2.25,z,w:.38,d:.38,h:4.6});
+ }
+
+ const starPositions=[];
+ for(let i=0;i<2200;i++){
+  let x,y,z;
+  do{
+   x=(Math.random()-.5)*480;
+   y=(Math.random()-.25)*320;
+   z=(Math.random()-.5)*520;
+  }while(Math.abs(x)<20&&Math.abs(z)<44);
+  starPositions.push(x,y,z);
+ }
+
+ const starGeometry=new THREE.BufferGeometry();
+ starGeometry.setAttribute(
+  'position',new THREE.Float32BufferAttribute(starPositions,3)
+ );
+ const stars=new THREE.Points(
+  starGeometry,
+  new THREE.PointsMaterial({
+   color:0xd7e7ff,size:.55,sizeAttenuation:true,fog:false
+  })
+ );
+ scene.add(stars);
+
+ const planetMaterial=new THREE.MeshStandardMaterial({
+  color:0x24517f,emissive:0x102b4b,emissiveIntensity:.8,
+  roughness:1,fog:false
+ });
+ const planet=new THREE.Mesh(
+  new THREE.SphereGeometry(21,32,24),planetMaterial
+ );
+ planet.position.set(78,29,-24);
+ scene.add(planet);
+
+ const moonMaterial=new THREE.MeshStandardMaterial({
+  color:0x8293ad,emissive:0x202b3c,emissiveIntensity:.45,
+  roughness:1,fog:false
+ });
+ const moon=new THREE.Mesh(
+  new THREE.SphereGeometry(11,24,18),moonMaterial
+ );
+ moon.position.set(-92,20,35);
+ scene.add(moon);
+}
+
 /* ---------------- START GAME ---------------- */
 
 buildBuilding();
 buildWallChunks();
 buildLift();
+buildSpaceExterior();
 
 requestAnimationFrame(animate);
 
@@ -1397,7 +1734,7 @@ window.addEventListener('resize',()=>{
  camera.aspect=innerWidth/innerHeight;
  camera.updateProjectionMatrix();
 
- renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
+ renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.25));
  renderer.setSize(innerWidth,innerHeight);
 });
 
