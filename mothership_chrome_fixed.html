@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mothership - Crew Quarters</title>
+
+<style>
+*{box-sizing:border-box}
+html,body{
+ margin:0;width:100%;height:100%;overflow:hidden;
+ background:#03050a;color:white;
+ font-family:system-ui,sans-serif;touch-action:none
+}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%;z-index:0}
+#hud{position:fixed;inset:0;z-index:5;pointer-events:none}
+#tag{
+ position:absolute;top:12px;left:12px;padding:8px 11px;
+ background:#101722cc;border:1px solid #ffffff35;
+ border-radius:8px;font-size:11px;letter-spacing:2px
+}
+#fps{
+ position:absolute;top:14px;left:50%;transform:translateX(-50%);
+ padding:5px 9px;background:#101722cc;
+ border:1px solid #ffffff35;border-radius:7px;
+ color:#d2e4ff;font-size:11px;letter-spacing:1px;
+ font-variant-numeric:tabular-nums
+}
+#cross{
+ position:absolute;left:50%;top:50%;
+ width:16px;height:16px;transform:translate(-50%,-50%)
+}
+#cross:before,#cross:after{
+ content:"";position:absolute;background:#eaf2ffbb
+}
+#cross:before{width:14px;height:1px;left:1px;top:7px}
+#cross:after{height:14px;width:1px;left:7px;top:1px}
+
+#base{
+ pointer-events:auto;position:absolute;left:24px;bottom:25px;
+ width:140px;height:140px;border-radius:50%;
+ border:2px solid #dce8ff70;background:#dce8ff20;
+ touch-action:none
+}
+#joystickKnob{
+ position:absolute;left:50%;top:50%;width:58px;height:58px;
+ transform:translate(-50%,-50%);border-radius:50%;
+ background:#cfe2ff50;border:2px solid #e3edffb0;
+ pointer-events:none
+}
+.mobileBtn{
+ pointer-events:auto;position:absolute;
+ width:60px;height:60px;display:grid;place-items:center;
+ color:white;background:#101722dd;
+ border:1px solid #ffffff70;border-radius:50%;
+ font-size:20px;font-weight:700;touch-action:none;
+ user-select:none;-webkit-user-select:none
+}
+#runBtn{left:64px;bottom:180px}
+#crouchBtn{right:24px;bottom:108px}
+#jumpBtn{right:96px;bottom:122px}
+#interactBtn{
+ right:168px;bottom:122px;
+ border:2px solid #85eaff;background:#12344dcc;
+ box-shadow:0 0 12px #55dfff55
+}
+.mobileBtn.active{
+ background:#28538acc;border-color:#9ecbff;
+ box-shadow:0 0 14px #6daeff66
+}
+#interactBtn.ready{
+ background:#176078;border-color:#b5f6ff
+}
+#interactBtn[hidden]{display:none}
+
+#settingsBtn{
+ pointer-events:auto;position:absolute;top:14px;right:14px;
+ width:46px;height:46px;border:1px solid #ffffff70;
+ border-radius:50%;background:#101722dd;color:white;
+ font-size:17px
+}
+#settingsPanel{
+ pointer-events:auto;position:absolute;top:70px;right:14px;
+ width:220px;padding:16px;background:#101722ee;
+ border:1px solid #ffffff45;border-radius:12px
+}
+#settingsPanel[hidden]{display:none}
+#settingsPanel label{display:flex;justify-content:space-between;font-size:13px}
+#sensitivity{width:100%;margin-top:14px;accent-color:#8ebaff;touch-action:auto}
+#hint{
+ position:absolute;right:12px;bottom:22px;
+ text-align:right;font-size:11px;color:#d2e4ffdd
+}
+
+@media (hover:hover) and (pointer:fine){
+ #base,#runBtn,#crouchBtn,#jumpBtn,#interactBtn{display:none!important}
+ #hint{font-size:12px}
+}
+</style>
+</head>
+
+<body>
+<div id="hud">
+
+ <div id="tag">MOTHERSHIP · CREW QUARTERS</div>
+ <div id="fps">FPS: --</div>
+ <div id="cross"></div>
+
+ <button id="settingsBtn">S</button>
+
+ <div id="settingsPanel" hidden>
+  <label>Look sensitivity <span id="sensitivityValue">100%</span></label>
+  <input id="sensitivity" type="range" min="25" max="500" value="100">
+ </div>
+
+ <div id="base"><div id="joystickKnob"></div></div>
+
+ <button class="mobileBtn" id="runBtn">R</button>
+ <button class="mobileBtn" id="crouchBtn">C</button>
+ <button class="mobileBtn" id="jumpBtn">J</button>
+ <button class="mobileBtn" id="interactBtn" hidden>O</button>
+
+
+ <div id="hint">
+  PC: WASD / MOUSE / SHIFT / SPACE<br>
+  MOBILE: JOYSTICK / BUTTONS
+ </div>
+
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"}}
+</script>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/loaders/GLTFLoader.js';
+
+/* ---------------- CONFIGURATION ---------------- */
+
+const AREA_WIDTH=30;
+const AREA_LENGTH=74;
+const HEIGHT=4;
+const FLOOR_SPACING=6;
+const FLOOR_COUNT=10;
+const LIFT_Z=38.3;
+
+let floorLevel=0;
+let buildingLevel=0;
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ---------------- RENDERER ---------------- */
+
+const renderer=new THREE.WebGLRenderer({
+ antialias:true,
+ powerPreference:'high-performance'
+});
+
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
+renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.NoToneMapping;
+
+document.body.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x03050a);
+scene.fog=new THREE.Fog(0x03050a,34,75);
+
+const camera=new THREE.PerspectiveCamera(
+ 72,innerWidth/innerHeight,0.08,220
+);
+
+camera.position.set(0,1.62,0);
+scene.add(camera);
+
+scene.add(new THREE.HemisphereLight(0x9db8ea,0x111827,1.8));
+
+const spawnLight=new THREE.PointLight(0xa8cfff,38,16,1.7);
+spawnLight.position.set(0,2.5,1);
+scene.add(spawnLight);
+
+const mainLight=new THREE.PointLight(0x8ebaff,34,20,1.8);
+mainLight.position.set(0,3,-3);
+scene.add(mainLight);
+
+const rearLight=new THREE.PointLight(0x5b83df,20,16,1.8);
+rearLight.position.set(0,2.8,-13);
+scene.add(rearLight);
+
+/* ---------------- MATERIALS ---------------- */
+
+const floorMat=new THREE.MeshStandardMaterial({
+ color:0x263348,roughness:.82,metalness:.35
+});
+
+const wallMat=new THREE.MeshStandardMaterial({
+ color:0x34465c,roughness:.78,metalness:.3
+});
+
+const roofMat=new THREE.MeshStandardMaterial({
+ color:0x182333,roughness:.9
+});
+
+const trimMat=new THREE.MeshStandardMaterial({
+ color:0x8298b5,metalness:.75,roughness:.3,
+ emissive:0x152238
+});
+
+const lampMat=new THREE.MeshStandardMaterial({
+ color:0xd8e8ff,emissive:0x8dbaff,emissiveIntensity:2.2
+});
+
+const blueprintTrim=new THREE.MeshStandardMaterial({
+ color:0x52b8d2,emissive:0x123c55,
+ metalness:.45,roughness:.35
+});
+
+const solidWallsByLevel=Array.from(
+ {length:FLOOR_COUNT},()=>[]
+);
+const wallGeometryChunks=new Map();
+const corridorLights=[];
+
+for(const z of [-18,18]){
+ const light=new THREE.PointLight(0xb6d7ff,26,32,1.7);
+ light.position.set(0,3.1,z);
+ scene.add(light);
+ corridorLights.push(light);
+}
+
+/* ---------------- BUILDING ---------------- */
+
+function wall(x,y,z,w,h,d,material=wallMat,solid=true){
+ const geometry=new THREE.BoxGeometry(w,h,d);
+ geometry.translate(x,buildingLevel*FLOOR_SPACING+y,z);
+
+ const chunkX=Math.floor((x+AREA_WIDTH/2)/12);
+ const chunkZ=Math.floor((z+AREA_LENGTH/2)/12);
+ const key=`${buildingLevel}:${chunkX}:${chunkZ}`;
+
+ if(!wallGeometryChunks.has(key)){
+  wallGeometryChunks.set(key,[]);
+ }
+ wallGeometryChunks.get(key).push(geometry);
+
+ if(solid){
+  solidWallsByLevel[buildingLevel].push({
+   x,y,z,w,d,h
+  });
+ }
+
+ return geometry;
+}
+
+function buildWallChunks(){
+ for(const geometries of wallGeometryChunks.values()){
+  const positions=[];
+  const normals=[];
+  const uvs=[];
+  const indices=[];
+  let vertexOffset=0;
+
+  for(const geometry of geometries){
+   positions.push(...geometry.attributes.position.array);
+   normals.push(...geometry.attributes.normal.array);
+   uvs.push(...geometry.attributes.uv.array);
+
+   const sourceIndices=geometry.index.array;
+   for(const index of sourceIndices){
+    indices.push(index+vertexOffset);
+   }
+
+   vertexOffset+=geometry.attributes.position.count;
+   geometry.dispose();
+  }
+
+  const merged=new THREE.BufferGeometry();
+  merged.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  merged.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+  merged.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+  merged.setIndex(indices);
+  merged.computeBoundingSphere();
+  scene.add(new THREE.Mesh(merged,wallMat));
+ }
+ wallGeometryChunks.clear();
+}
+
+function buildBuilding(){
+
+ const halfWidth=AREA_WIDTH/2;
+ const halfLength=AREA_LENGTH/2;
+ const hallHalf=2.2;
+ const roomCount=9;
+ const roomLength=AREA_LENGTH/roomCount;
+
+ for(let level=0;level<FLOOR_COUNT;level++){
+
+  buildingLevel=level;
+  const baseY=level*FLOOR_SPACING;
+
+  const floor=new THREE.Mesh(
+   new THREE.BoxGeometry(AREA_WIDTH,.18,AREA_LENGTH),
+   floorMat
+  );
+  floor.position.set(0,baseY-.09,0);
+  scene.add(floor);
+
+  const roof=new THREE.Mesh(
+   new THREE.BoxGeometry(AREA_WIDTH,.15,AREA_LENGTH),
+   roofMat
+  );
+  roof.position.set(0,baseY+HEIGHT+.08,0);
+  scene.add(roof);
+
+  wall(-halfWidth+.1,HEIGHT/2,0,.2,HEIGHT,AREA_LENGTH);
+  wall(halfWidth-.1,HEIGHT/2,0,.2,HEIGHT,AREA_LENGTH);
+  wall(0,HEIGHT/2,-halfLength+.1,AREA_WIDTH,HEIGHT,.2);
+
+  /* End-wall opening leading into the lift behind the corridor */
+  const liftOpeningWidth=4.2;
+  const sideWallWidth=(AREA_WIDTH-liftOpeningWidth)/2;
+  wall(-(liftOpeningWidth/2+sideWallWidth/2),HEIGHT/2,
+   halfLength-.1,sideWallWidth,HEIGHT,.2);
+  wall(liftOpeningWidth/2+sideWallWidth/2,HEIGHT/2,
+   halfLength-.1,sideWallWidth,HEIGHT,.2);
+  wall(0,3.5,halfLength-.1,liftOpeningWidth,1,.2);
+
+  /* Room walls and doorways */
+
+  for(const side of [-1,1]){
+
+   const boundary=side*hallHalf;
+   const roomDepth=halfWidth-hallHalf;
+
+   for(let i=0;i<roomCount;i++){
+
+    const left=-halfLength+i*roomLength;
+    const right=left+roomLength;
+    const center=(left+right)/2;
+    const gap=2.4;
+
+    if(i>0){
+     wall(
+      side*(hallHalf+roomDepth/2),
+      HEIGHT/2,left,
+      roomDepth,HEIGHT,.2
+     );
+    }
+
+    const first=center-gap/2;
+    const second=center+gap/2;
+
+    if(first>left){
+     wall(
+      boundary,HEIGHT/2,
+      (left+first)/2,
+      .2,HEIGHT,first-left
+     );
+    }
+
+    if(right>second){
+     wall(
+      boundary,HEIGHT/2,
+      (second+right)/2,
+      .2,HEIGHT,right-second
+     );
+    }
+
+    const doorLine=new THREE.Mesh(
+     new THREE.BoxGeometry(.045,.035,gap),
+     blueprintTrim
+    );
+
+    doorLine.position.set(
+     boundary+side*.16,baseY+.025,center
+    );
+
+    scene.add(doorLine);
+   }
+  }
+
+  /* Corridor ceiling lights */
+
+  const strips=new THREE.InstancedMesh(
+   new THREE.BoxGeometry(5,.045,.16),lampMat,roomCount
+  );
+  const stripTransform=new THREE.Object3D();
+
+  for(let i=0;i<roomCount;i++){
+   const z=-halfLength+(i+.5)*roomLength;
+   stripTransform.position.set(0,baseY+HEIGHT-.07,z);
+   stripTransform.updateMatrix();
+   strips.setMatrixAt(i,stripTransform.matrix);
+  }
+
+  strips.instanceMatrix.needsUpdate=true;
+  scene.add(strips);
+ }
+
+ buildingLevel=0;
+}
+
+/* ---------------- LIFT MODEL ---------------- */
+
+const metal=new THREE.MeshStandardMaterial({
+ color:0x53677f,metalness:.78,roughness:.27
+});
+
+const darkMetal=new THREE.MeshStandardMaterial({
+ color:0x172536,metalness:.65,roughness:.34
+});
+
+const liftTrim=new THREE.MeshStandardMaterial({
+ color:0x78e7ff,emissive:0x1682a8,
+ emissiveIntensity:1.5,metalness:.35,roughness:.28
+});
+
+const liftGlow=new THREE.MeshStandardMaterial({
+ color:0xb9f5ff,emissive:0x42cfff,emissiveIntensity:2.2
+});
+
+const liftCar=new THREE.Group();
+scene.add(liftCar);
+
+const liftDoorPanels=[];
+const liftButtonMeshes=[];
+
+let liftDisplayContext;
+let liftDisplayTexture;
+let liftTravelContext;
+let liftTravelTexture;
+let liftTravelLabel='';
+
+function makeDisplay(){
+
+ const canvas=document.createElement('canvas');
+ canvas.width=256;
+ canvas.height=128;
+
+ const context=canvas.getContext('2d');
+ const texture=new THREE.CanvasTexture(canvas);
+ texture.colorSpace=THREE.SRGBColorSpace;
+
+ return {canvas,context,texture};
+}
+
+const display=makeDisplay();
+liftDisplayContext=display.context;
+liftDisplayTexture=display.texture;
+
+const travelDisplay=makeDisplay();
+liftTravelContext=travelDisplay.context;
+liftTravelTexture=travelDisplay.texture;
+
+function updateDisplay(label){
+
+ liftDisplayContext.clearRect(0,0,256,128);
+ liftDisplayContext.fillStyle='#07151d';
+ liftDisplayContext.fillRect(0,0,256,128);
+
+ liftDisplayContext.fillStyle='#67f5c1';
+ liftDisplayContext.font='bold 88px system-ui';
+ liftDisplayContext.textAlign='center';
+ liftDisplayContext.textBaseline='middle';
+
+ liftDisplayContext.fillText(label,128,64);
+ liftDisplayTexture.needsUpdate=true;
+}
+
+function updateTravelDisplay(label){
+
+ if(label===liftTravelLabel)return;
+ liftTravelLabel=label;
+
+ liftTravelContext.clearRect(0,0,256,128);
+ liftTravelContext.fillStyle='#07151d';
+ liftTravelContext.fillRect(0,0,256,128);
+
+ liftTravelContext.fillStyle='#83caff';
+ liftTravelContext.font='bold 48px system-ui';
+ liftTravelContext.textAlign='center';
+ liftTravelContext.textBaseline='middle';
+
+ liftTravelContext.fillText('FLOOR '+label,128,64);
+ liftTravelTexture.needsUpdate=true;
+}
+
+function addLiftBox(w,h,d,x,y,z,material){
+ const part=new THREE.Mesh(
+  new THREE.BoxGeometry(w,h,d),material
+ );
+ part.position.set(x,y,z);
+ liftCar.add(part);
+ return part;
+}
+
+/* Lift cabin */
+
+function buildLift(){
+
+ addLiftBox(3.2,.08,3.4,0,-.04,0,darkMetal);
+ addLiftBox(2.82,.045,2.92,0,.0225,.02,metal);
+
+ for(const x of [-1.43,1.43]){
+  addLiftBox(.045,.035,3.12,x,.047,0,liftTrim);
+ }
+
+ for(const z of [-1.53,1.53]){
+  addLiftBox(2.9,.035,.045,0,.047,z,liftTrim);
+ }
+
+ for(let i=-2;i<=2;i++){
+  addLiftBox(.018,.012,2.55,i*.46,.07,.02,darkMetal);
+ }
+
+ /* Rear wall */
+
+ addLiftBox(3.2,2.8,.16,0,1.5,1.62,wallMat);
+
+ for(const x of [-1.53,1.53]){
+  addLiftBox(.14,2.8,3.1,x,1.5,0,metal);
+  addLiftBox(.045,2.35,.065,x*.94,1.5,-1.48,liftTrim);
+ }
+
+ /* Roof */
+
+ addLiftBox(3.18,.18,3.2,0,2.88,0,darkMetal);
+ addLiftBox(1.45,.035,2.25,0,2.78,-.05,liftTrim);
+ addLiftBox(1.1,.025,1.9,0,2.755,-.05,liftGlow);
+
+ /* Control console */
+
+ addLiftBox(1.48,2.2,.045,0,1.48,1.51,darkMetal);
+ addLiftBox(1.45,.32,.055,0,2.48,1.475,darkMetal);
+
+ const displayFace=new THREE.Mesh(
+  new THREE.PlaneGeometry(.62,.26),
+  new THREE.MeshBasicMaterial({
+   map:liftDisplayTexture,side:THREE.DoubleSide
+  })
+ );
+
+ displayFace.position.set(-.36,2.48,1.425);
+ displayFace.rotation.y=Math.PI;
+ liftCar.add(displayFace);
+
+ const travelFace=new THREE.Mesh(
+  new THREE.PlaneGeometry(.62,.26),
+  new THREE.MeshBasicMaterial({
+   map:liftTravelTexture,side:THREE.DoubleSide
+  })
+ );
+
+ travelFace.position.set(.36,2.48,1.425);
+ travelFace.rotation.y=Math.PI;
+ liftCar.add(travelFace);
+
+ /* Number buttons */
+
+ for(let deck=0;deck<FLOOR_COUNT;deck++){
+
+  const column=deck%2;
+  const row=Math.floor(deck/2);
+
+  const x=column===0?-.34:.34;
+  const y=2.12-row*.29;
+
+  addLiftBox(.3,.22,.07,x,y,1.475,darkMetal);
+
+  const buttonMat=new THREE.MeshStandardMaterial({
+   color:0x9aacc2,
+   emissive:0x16263a,
+   emissiveIntensity:1.1,
+   metalness:.48,
+   roughness:.3
+  });
+
+  const cap=new THREE.Mesh(
+   new THREE.BoxGeometry(.2,.2,.055),
+   buttonMat
+  );
+
+  cap.position.set(x,y,1.405);
+  cap.userData.deck=deck;
+  liftCar.add(cap);
+
+  const canvas=document.createElement('canvas');
+  canvas.width=128;
+  canvas.height=128;
+
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#f4f8ff';
+  ctx.font='bold 72px system-ui';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(deck===9?'0':String(deck+1),64,66);
+
+  const texture=new THREE.CanvasTexture(canvas);
+  texture.colorSpace=THREE.SRGBColorSpace;
+
+  const number=new THREE.Mesh(
+   new THREE.PlaneGeometry(.16,.16),
+   new THREE.MeshBasicMaterial({
+    map:texture,transparent:true,
+    depthWrite:false,side:THREE.DoubleSide
+   })
+  );
+
+  number.position.set(x,y,1.37);
+  number.rotation.y=Math.PI;
+  liftCar.add(number);
+
+  liftButtonMeshes.push(cap);
+ }
+
+ /* Confirmation button */
+
+ const goMat=new THREE.MeshStandardMaterial({
+  color:0x20b85a,emissive:0x08772c,
+  emissiveIntensity:1.4
+ });
+
+ const goButton=addLiftBox(
+  .66,.18,.11,0,.55,1.43,goMat
+ );
+
+ goButton.userData.confirm=true;
+ liftButtonMeshes.push(goButton);
+
+ addLiftBox(.22,.055,.025,0,.55,1.365,liftGlow);
+
+ /* Entrance doors */
+
+ for(const side of [-1,1]){
+
+  const door=new THREE.Group();
+  door.position.set(side*.68,0,-1.53);
+  liftCar.add(door);
+
+  const panel=new THREE.Mesh(
+   new THREE.BoxGeometry(1.38,2.82,.1),
+   darkMetal
+  );
+
+  panel.position.y=1.5;
+  door.add(panel);
+
+  const edge=new THREE.Mesh(
+   new THREE.BoxGeometry(.035,2.7,.025),
+   liftTrim
+  );
+
+  edge.position.set(-side*.65,1.5,-.06);
+  door.add(edge);
+
+  liftDoorPanels.push({group:door,side});
+ }
+
+ /* Lift sign */
+
+ const signCanvas=document.createElement('canvas');
+ signCanvas.width=512;
+ signCanvas.height=128;
+
+ const signCtx=signCanvas.getContext('2d');
+ signCtx.fillStyle='#07151d';
+ signCtx.fillRect(0,0,512,128);
+ signCtx.fillStyle='#83eaff';
+ signCtx.font='bold 82px system-ui';
+ signCtx.textAlign='center';
+ signCtx.textBaseline='middle';
+ signCtx.fillText('LIFT',256,64);
+
+ const signTexture=new THREE.CanvasTexture(signCanvas);
+ signTexture.colorSpace=THREE.SRGBColorSpace;
+
+ const sign=new THREE.Mesh(
+  new THREE.PlaneGeometry(1.05,.26),
+  new THREE.MeshBasicMaterial({
+   map:signTexture,side:THREE.DoubleSide
+  })
+ );
+
+ sign.position.set(0,3.12,-1.67);
+ sign.rotation.y=Math.PI;
+ liftCar.add(sign);
+
+ const light=new THREE.PointLight(0x76caff,10,8,2);
+ light.position.set(0,2.35,0);
+ liftCar.add(light);
+
+ liftCar.position.set(0,0,LIFT_Z);
+
+ for(let level=0;level<FLOOR_COUNT;level++){
+
+  solidWallsByLevel[level].push(
+   {x:-1.53,y:1.5,z:LIFT_Z,w:.14,d:3.1,h:2.8},
+   {x:1.53,y:1.5,z:LIFT_Z,w:.14,d:3.1,h:2.8},
+   {x:0,y:1.5,z:LIFT_Z+1.62,w:3.2,d:.14,h:2.8}
+  );
+ }
+
+ updateDisplay('1');
+ updateTravelDisplay('1');
+}
+
+/* ---------------- INPUT SYSTEM ---------------- */
+
+/* PC keyboard */
+
+const keys={};
+
+let isRunning=false;
+let isCrouching=false;
+
+window.addEventListener('keydown',e=>{
+
+ keys[e.code]=true;
+
+ if([
+  'Space','ArrowUp','ArrowDown',
+  'ArrowLeft','ArrowRight'
+ ].includes(e.code)){
+  e.preventDefault();
+ }
+
+ if(e.repeat)return;
+
+ if(e.code==='Space'&&grounded&&!liftMoving){
+  jumpVelocity=8.6;
+  grounded=false;
+ }
+
+ if(e.code==='KeyE'){
+  startLift();
+ }
+
+ if(e.code==='KeyO'){
+  interactWithLift();
+ }
+});
+
+window.addEventListener('keyup',e=>{
+ keys[e.code]=false;
+});
+
+window.addEventListener('blur',()=>{
+ for(const key in keys)keys[key]=false;
+ setRunning(false);
+});
+
+/* Mouse pointer lock */
+
+renderer.domElement.addEventListener('click',()=>{
+
+ if(matchMedia('(hover:hover) and (pointer:fine)').matches){
+  if(!document.pointerLockElement){
+   renderer.domElement.requestPointerLock();
+  }
+ }
+});
+
+/* Mobile look and PC mouse look */
+
+let lookId=null;
+let lastX=0,lastY=0;
+let yaw=0,pitch=0;
+let lookSensitivity=1;
+
+document.addEventListener('mousemove',e=>{
+
+ if(document.pointerLockElement!==renderer.domElement)return;
+
+ yaw-=e.movementX*.0036*lookSensitivity;
+
+ pitch=clamp(
+  pitch-e.movementY*.0032*lookSensitivity,
+  -.9,.9
+ );
+});
+
+renderer.domElement.addEventListener('pointerdown',e=>{
+
+ if(e.pointerType==='mouse')return;
+ if(lookId!==null)return;
+
+ lookId=e.pointerId;
+ lastX=e.clientX;
+ lastY=e.clientY;
+
+ renderer.domElement.setPointerCapture(lookId);
+});
+
+renderer.domElement.addEventListener('pointermove',e=>{
+
+ if(e.pointerId!==lookId)return;
+
+ const dx=e.clientX-lastX;
+ const dy=e.clientY-lastY;
+
+ lastX=e.clientX;
+ lastY=e.clientY;
+
+ yaw-=dx*.0036*lookSensitivity;
+
+ pitch=clamp(
+  pitch-dy*.0032*lookSensitivity,
+  -.9,.9
+ );
+});
+
+function stopLook(e){
+ if(e.pointerId===lookId)lookId=null;
+}
+
+renderer.domElement.addEventListener('pointerup',stopLook);
+renderer.domElement.addEventListener('pointercancel',stopLook);
+
+/* Sensitivity */
+
+const settingsBtn=document.getElementById('settingsBtn');
+const settingsPanel=document.getElementById('settingsPanel');
+const sensitivitySlider=document.getElementById('sensitivity');
+const sensitivityValue=document.getElementById('sensitivityValue');
+
+settingsBtn.addEventListener('click',()=>{
+ settingsPanel.hidden=!settingsPanel.hidden;
+});
+
+sensitivitySlider.addEventListener('input',()=>{
+ lookSensitivity=Number(sensitivitySlider.value)/100;
+ sensitivityValue.textContent=sensitivitySlider.value+'%';
+});
+
+/* ---------------- MOBILE JOYSTICK ---------------- */
+
+const base=document.getElementById('base');
+const joystickKnob=document.getElementById('joystickKnob');
+
+let moveX=0,moveY=0,joyId=null;
+
+function moveStick(e){
+
+ const r=base.getBoundingClientRect();
+ const max=r.width*.34;
+
+ let dx=e.clientX-r.left-r.width/2;
+ let dy=e.clientY-r.top-r.height/2;
+
+ const len=Math.hypot(dx,dy);
+
+ if(len>max){
+  dx=dx/len*max;
+  dy=dy/len*max;
+ }
+
+ moveX=dx/max;
+ moveY=dy/max;
+
+ joystickKnob.style.left=`calc(50% + ${dx}px)`;
+ joystickKnob.style.top=`calc(50% + ${dy}px)`;
+}
+
+base.addEventListener('pointerdown',e=>{
+ e.preventDefault();
+ e.stopPropagation();
+
+ if(joyId!==null)return;
+
+ joyId=e.pointerId;
+ base.setPointerCapture(joyId);
+ moveStick(e);
+});
+
+base.addEventListener('pointermove',e=>{
+ if(e.pointerId!==joyId)return;
+ moveStick(e);
+});
+
+function stopJoy(e){
+
+ if(joyId!==null&&(!e||e.pointerId===joyId)){
+
+  joyId=null;
+  moveX=0;
+  moveY=0;
+
+  joystickKnob.style.left='50%';
+  joystickKnob.style.top='50%';
+ }
+}
+
+base.addEventListener('pointerup',stopJoy);
+base.addEventListener('pointercancel',stopJoy);
+base.addEventListener('lostpointercapture',stopJoy);
+
+/* Run button */
+
+const runBtn=document.getElementById('runBtn');
+
+function setRunning(active){
+ isRunning=active;
+ runBtn.classList.toggle('active',active);
+}
+
+runBtn.addEventListener('pointerdown',e=>{
+ e.preventDefault();
+ e.stopPropagation();
+
+ setRunning(!isRunning);
+});
+
+/* Crouch button */
+
+const crouchBtn=document.getElementById('crouchBtn');
+
+crouchBtn.addEventListener('pointerdown',e=>{
+ e.preventDefault();
+ e.stopPropagation();
+
+ isCrouching=!isCrouching;
+ crouchBtn.classList.toggle('active',isCrouching);
+});
+
+/* Jump button */
+
+const jumpBtn=document.getElementById('jumpBtn');
+
+jumpBtn.addEventListener('pointerdown',e=>{
+ e.preventDefault();
+ e.stopPropagation();
+
+ if(grounded&&!liftMoving){
+  jumpVelocity=8.6;
+  grounded=false;
+ }
+});
+
+/* ---------------- LIFT SYSTEM ---------------- */
+
+const interactBtn=document.getElementById('interactBtn');
+const tag=document.getElementById('tag');
+
+let liftMoving=false;
+let liftTravelStarted=false;
+let liftElapsed=0;
+let liftSource=0;
+let liftDestination=0;
+let liftOffset=0;
+let selectedFloor=null;
+let liftDoorProgress=0;
+
+const liftRaycaster=new THREE.Raycaster();
+const centerPoint=new THREE.Vector2(0,0);
+
+let aimedLiftDeck=null;
+let aimedLiftConfirm=false;
+
+function selectLiftFloor(deck){
+
+ if(deck<0||deck>=FLOOR_COUNT||liftMoving)return;
+
+ selectedFloor=deck;
+
+ updateDisplay(String(deck+1));
+}
+
+function startLift(destination){
+
+ if(liftMoving)return;
+
+  const near=Math.abs(camera.position.x)<2.5&&
+  Math.abs(camera.position.z-LIFT_Z)<3.2;
+
+
+ if(!near)return;
+
+ if(destination===undefined){
+  destination=floorLevel<FLOOR_COUNT-1
+   ?floorLevel+1
+   :floorLevel-1;
+ }
+
+ if(destination<0||destination>=FLOOR_COUNT)return;
+ if(destination===floorLevel)return;
+
+ liftMoving=true;
+ liftTravelStarted=false;
+ liftElapsed=0;
+
+ liftSource=floorLevel;
+ liftDestination=destination;
+ liftOffset=0;
+
+ selectedFloor=null;
+
+ jumpHeight=0;
+ jumpVelocity=0;
+ grounded=true;
+
+ setRunning(false);
+}
+
+function interactWithLift(){
+
+ if(aimedLiftDeck!==null){
+  selectLiftFloor(aimedLiftDeck);
+ }
+ else if(aimedLiftConfirm&&selectedFloor!==null){
+  startLift(selectedFloor);
+ }
+}
+
+interactBtn.addEventListener('pointerdown',e=>{
+ e.preventDefault();
+ e.stopPropagation();
+ interactWithLift();
+});
+
+function updateLiftAim(insideLift){
+
+ aimedLiftDeck=null;
+ aimedLiftConfirm=false;
+
+ if(insideLift&&!liftMoving&&liftDoorProgress>.95){
+
+  liftRaycaster.setFromCamera(centerPoint,camera);
+
+  const hit=liftRaycaster.intersectObjects(
+   liftButtonMeshes,false
+  )[0];
+
+  if(hit){
+
+   if(Number.isInteger(hit.object.userData.deck)){
+    aimedLiftDeck=hit.object.userData.deck;
+   }
+
+   aimedLiftConfirm=hit.object.userData.confirm===true;
+  }
+ }
+
+ for(const button of liftButtonMeshes){
+
+  if(Number.isInteger(button.userData.deck)){
+
+   button.material.emissiveIntensity=
+    button.userData.deck===aimedLiftDeck?2.8:
+    button.userData.deck===selectedFloor?1.8:
+    button.userData.deck===floorLevel?1.5:1.1;
+  }
+ }
+
+ interactBtn.hidden=!(
+  insideLift&&liftDoorProgress>.95&&!liftMoving
+ );
+
+ interactBtn.disabled=(
+  aimedLiftDeck===null&&!aimedLiftConfirm
+ );
+
+ interactBtn.classList.toggle(
+  'ready',!interactBtn.disabled
+ );
+}
+
+/* ---------------- PLAYER PHYSICS ---------------- */
+
+let jumpHeight=0;
+let jumpVelocity=0;
+let playerHeight=1.62;
+let grounded=true;
+
+let prev=performance.now();
+let fpsFrames=0;
+let fpsElapsed=0;
+const fpsDisplay=document.getElementById('fps');
+let walkPhase=0;
+let bobPower=0;
+
+function animate(now){
+
+ requestAnimationFrame(animate);
+
+ const dt=Math.min((now-prev)/1000,.1);
+ prev=now;
+
+ fpsFrames++;
+ fpsElapsed+=dt;
+ if(fpsElapsed>=.25){
+  fpsDisplay.textContent='FPS: '+Math.round(fpsFrames/fpsElapsed);
+  fpsFrames=0;
+  fpsElapsed=0;
+ }
+
+ /* Position checks */
+
+ const nearLift=
+  Math.abs(camera.position.x)<2.5&&
+  Math.abs(camera.position.z-LIFT_Z)<3.2;
+
+ const insideLift=
+  Math.abs(camera.position.x)<1.2&&
+  camera.position.z>LIFT_Z-1.55&&
+  camera.position.z<LIFT_Z+1.25;
+
+ /* Lift doors */
+
+ const targetDoorProgress=(!liftMoving&&nearLift)?1:0;
+
+ liftDoorProgress+=(
+  targetDoorProgress-liftDoorProgress
+ )*Math.min(1,dt*4.5);
+
+ if(Math.abs(targetDoorProgress-liftDoorProgress)<.005){
+  liftDoorProgress=targetDoorProgress;
+ }
+
+ for(const door of liftDoorPanels){
+  door.group.position.x=
+   door.side*(.68+liftDoorProgress*.85);
+ }
+
+ /* Lift movement */
+
+ if(liftMoving){
+
+  if(!liftTravelStarted){
+
+   camera.position.x=clamp(camera.position.x,-1,1);
+   camera.position.z=LIFT_Z;
+
+   if(liftDoorProgress<=.005){
+    liftTravelStarted=true;
+    liftElapsed=0;
+   }
+
+  }else{
+
+   liftElapsed+=dt;
+
+   const progress=clamp(liftElapsed/3.2,0,1);
+   const eased=progress*progress*(3-2*progress);
+
+   liftOffset=(
+    (liftDestination-liftSource)*FLOOR_SPACING*eased
+   );
+
+   liftCar.position.y=
+    liftSource*FLOOR_SPACING+liftOffset;
+
+   if(progress>=1){
+
+    floorLevel=liftDestination;
+    liftOffset=0;
+    liftMoving=false;
+    liftTravelStarted=false;
+
+    liftCar.position.y=floorLevel*FLOOR_SPACING;
+   }
+  }
+ }
+
+ for(const light of corridorLights){
+  light.position.y=floorLevel*FLOOR_SPACING+liftOffset+3.1;
+ }
+
+ let shownFloor=floorLevel;
+
+ if(liftMoving&&liftTravelStarted){
+
+  const progress=clamp(liftElapsed/3.2,0,1);
+  const eased=progress*progress*(3-2*progress);
+
+  shownFloor=Math.round(
+   liftSource+(liftDestination-liftSource)*eased
+  );
+ }
+
+ updateTravelDisplay(String(shownFloor+1));
+
+ /* Combined keyboard and joystick input */
+
+ const canWalk=!liftMoving;
+
+ const pcForward=
+  (keys['KeyW']?1:0)-(keys['KeyS']?1:0);
+
+ const pcStrafe=
+  (keys['KeyD']?1:0)-(keys['KeyA']?1:0);
+
+ const forwardInput=clamp(
+  pcForward-moveY,-1,1
+ );
+
+ const strafeInput=clamp(
+  pcStrafe+moveX,-1,1
+ );
+
+ const moving=canWalk&&(
+  Math.abs(forwardInput)>.05||
+  Math.abs(strafeInput)>.05
+ );
+
+ const running=
+  keys['ShiftLeft']||keys['ShiftRight']||isRunning;
+
+ const crouching=
+  keys['ControlLeft']||keys['ControlRight']||isCrouching;
+
+ const speed=crouching?1.6:(running?9.2:3.25);
+
+ /* Normalize diagonal movement */
+
+ const inputLength=Math.hypot(forwardInput,strafeInput);
+
+ const forward=inputLength>1
+  ?forwardInput/inputLength:forwardInput;
+
+ const strafe=inputLength>1
+  ?strafeInput/inputLength:strafeInput;
+
+ /* Camera-relative movement */
+
+ const desiredX=camera.position.x+(
+  Math.cos(yaw)*strafe-Math.sin(yaw)*forward
+ )*speed*dt;
+
+ const desiredZ=camera.position.z+(
+  -Math.sin(yaw)*strafe-Math.cos(yaw)*forward
+ )*speed*dt;
+
+ const nextX=clamp(
+  desiredX,-AREA_WIDTH/2+.55,AREA_WIDTH/2-.55
+ );
+
+ const maxZ=Math.abs(nextX)<1.8
+  ?LIFT_Z+1.2
+  :AREA_LENGTH/2-.55;
+
+ const nextZ=clamp(
+  desiredZ,-AREA_LENGTH/2+.55,maxZ
+ );
+
+ /* Collision */
+
+ const blocked=(x,z)=>{
+
+  const wallHit=solidWallsByLevel[floorLevel].some(w=>
+   Math.abs(x-w.x)<w.w/2+.28&&
+   Math.abs(z-w.z)<w.d/2+.28&&
+   jumpHeight<w.y+w.h/2&&
+   jumpHeight+playerHeight>w.y-w.h/2
+  );
+
+  const doorHit=(
+   !liftMoving&&
+   liftDoorProgress<.98&&
+   Math.abs(z-(LIFT_Z-1.53))<.35&&
+   liftDoorPanels.some(door=>
+    Math.abs(x-door.group.position.x)<.69
+   )
+  );
+
+  return wallHit||doorHit;
+ };
+
+ if(!blocked(nextX,camera.position.z)){
+  camera.position.x=nextX;
+ }
+
+ if(!blocked(camera.position.x,nextZ)){
+  camera.position.z=nextZ;
+ }
+
+ /* Jump physics */
+
+ const previousHeight=jumpHeight;
+
+ if(!grounded){
+
+  jumpVelocity-=24.5*dt;
+  jumpHeight+=jumpVelocity*dt;
+
+  if(jumpVelocity<=0&&jumpHeight<=0){
+   jumpHeight=0;
+   jumpVelocity=0;
+   grounded=true;
+  }
+ }
+
+ /* Camera movement animation */
+
+ const targetBobPower=moving?(running?1:crouching?.3:.55):0;
+ bobPower+=(targetBobPower-bobPower)*Math.min(1,dt*8);
+
+ if(moving){
+  walkPhase+=dt*(running?15:(crouching?8:10.5));
+ }
+
+ const targetHeight=crouching?1.02:1.62;
+
+ playerHeight+=(
+  targetHeight-playerHeight
+ )*Math.min(1,dt*10);
+
+ const bobAmount=crouching?.018:(running?.075:.04);
+
+ camera.position.y=
+  floorLevel*FLOOR_SPACING+
+  liftOffset+
+  playerHeight+
+  jumpHeight+
+  Math.sin(walkPhase*2)*bobAmount*bobPower;
+
+ /* HUD */
+
+ tag.textContent='DECK '+(floorLevel+1);
+
+ /* Camera */
+
+ camera.rotation.order='YXZ';
+ camera.rotation.y=yaw;
+ camera.rotation.x=pitch;
+ camera.rotation.z=moving
+  ?Math.sin(walkPhase)*(running?.018:.009)*bobPower
+  :camera.rotation.z*Math.max(0,1-dt*8);
+
+ updateLiftAim(insideLift);
+
+ renderer.render(scene,camera);
+}
+
+/* ---------------- 3D CABIN MODEL ---------------- */
+
+const gltfLoader = new GLTFLoader();
+
+gltfLoader.load(
+  './siupspace_cabin.glb',
+
+  function(gltf) {
+    const cabin = gltf.scene;
+
+    // Position the cabin inside the first room on the left
+    cabin.position.set(-8.5, 0.38, -32.9);
+
+    // Preserve the model's original scale
+    cabin.scale.set(1, 1, 1);
+
+    cabin.traverse(function(obj) {
+      if (obj.isMesh) {
+        obj.castShadow = false;
+        obj.receiveShadow = false;
+      }
+    });
+
+    scene.add(cabin);
+
+    console.log('SPACESHIP CABIN LOADED');
+  },
+
+  undefined,
+
+  function(error) {
+    console.error('CABIN GLB FAILED TO LOAD:', error);
+  }
+);
+
+/* ---------------- START GAME ---------------- */
+
+buildBuilding();
+buildWallChunks();
+buildLift();
+
+requestAnimationFrame(animate);
+
+/* ---------------- RESIZE ---------------- */
+
+window.addEventListener('resize',()=>{
+
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+
+ renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
+ renderer.setSize(innerWidth,innerHeight);
+});
+
+</script>
+</body>
+</html>
