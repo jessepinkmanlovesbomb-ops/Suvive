@@ -1358,8 +1358,8 @@ gltfLoader.load(
     const cabin = gltf.scene;
 
     // Keep it on the ground floor, just inside the first room's doorway.
-    cabin.position.set(0, 0, -2);
-    cabin.scale.set(2, 2, 2);
+    cabin.position.set(-6, 0, -30);
+    cabin.scale.set(1, 1, 1);
 
     cabin.traverse(function(obj) {
       if (obj.isMesh) {
