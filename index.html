@@ -201,16 +201,20 @@ rearLight.position.set(0,2.8,-13);
 scene.add(rearLight);
 
 /* ---------------- MATERIALS ---------------- */
+const wallMat=new THREE.MeshStandardMaterial({
+ color:0xccb656,roughness:.95,metalness:.1
+});
+
 const floorMat=new THREE.MeshStandardMaterial({
  color:0x8a8579,roughness:1.0,metalness:0
 });
+
 const roofMat=new THREE.MeshStandardMaterial({
  color:0xdcdcd0,roughness:.9
 });
 
 const trimMat=new THREE.MeshStandardMaterial({
- color:0x8298b5,metalness:.75,roughness:.3,
- emissive:0x152238
+ color:0x4a4535,metalness:.2,roughness:.8
 });
 
 const lampMat=new THREE.MeshStandardMaterial({
