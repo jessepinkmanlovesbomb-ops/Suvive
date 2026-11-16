@@ -995,50 +995,426 @@ function carPart(parent,geometry,material,x,y,z){
 }
 
 function buildCar(){
- // Sculpted body, raised cabin, and tinted glass give the car a clean touring-car profile.
- carPart(carGroup,new THREE.BoxGeometry(2.08,.52,4.45),carPaint,0,.72,0);
- carPart(carGroup,new THREE.BoxGeometry(1.98,.3,1.32),carPaint,0,1.06,-1.42);
- carPart(carGroup,new THREE.BoxGeometry(1.94,.32,1.12),carPaint,0,1.04,1.53);
- carPart(carGroup,new THREE.BoxGeometry(1.68,.12,1.95),carPaint,0,1.72,.03);
- carPart(carGroup,new THREE.BoxGeometry(1.58,.46,.06),carGlass,0,1.43,-.91).rotation.x=-.24;
- carPart(carGroup,new THREE.BoxGeometry(1.5,.4,.06),carGlass,0,1.43,1.03).rotation.x=.28;
 
- for(const side of [-1,1]){
-  carPart(carGroup,new THREE.BoxGeometry(.045,.42,1.28),carGlass,side*.82,1.43,.03);
-  carPart(carGroup,new THREE.BoxGeometry(.12,.48,.12),carPaint,side*.8,1.45,-.62);
-  carPart(carGroup,new THREE.BoxGeometry(.12,.48,.12),carPaint,side*.8,1.45,.67);
-  carPart(carGroup,new THREE.BoxGeometry(.08,.08,.42),carChrome,side*1.04,.86,.05);
-  carPart(carGroup,new THREE.BoxGeometry(.24,.13,.28),carPaint,side*1.12,1.13,-.72);
-  carPart(carGroup,new THREE.BoxGeometry(.12,.19,.56),headlightMat,side*.72,.9,-2.22);
-  carPart(carGroup,new THREE.BoxGeometry(.13,.2,.42),tailLightMat,side*.72,.91,2.23);
-  carPart(carGroup,new THREE.BoxGeometry(.035,.055,.38),carChrome,side*1.047,.75,.1);
+ // ==========================================
+ // FUTURISTIC LUXURY SPORT CAR
+ // Front = -Z | Rear = +Z
+ // ==========================================
+
+ // Smooth custom body mesh made from longitudinal rings.
+ function makeLoft(stations,material,segments=32){
+
+  const vertices=[];
+  const indices=[];
+
+  for(let i=0;i<stations.length;i++){
+
+   const s=stations[i];
+
+   for(let j=0;j<=segments;j++){
+
+    const a=(j/segments)*Math.PI*2;
+
+    const x=Math.cos(a)*s.width;
+    const y=s.centerY+Math.sin(a)*s.height;
+
+    vertices.push(x,y,s.z);
+   }
+  }
+
+  for(let i=0;i<stations.length-1;i++){
+
+   for(let j=0;j<segments;j++){
+
+    const a=i*(segments+1)+j;
+    const b=a+segments+1;
+
+    indices.push(a,b,a+1);
+    indices.push(a+1,b,b+1);
+   }
+  }
+
+  // Close front and rear ends.
+  const frontCenter=vertices.length/3;
+  vertices.push(0,stations[0].centerY,stations[0].z);
+
+  const rear=stations.length-1;
+  const rearCenter=vertices.length/3;
+  vertices.push(0,stations[rear].centerY,stations[rear].z);
+
+  for(let j=0;j<segments;j++){
+
+   indices.push(frontCenter,j,j+1);
+
+   const base=rear*(segments+1);
+   indices.push(rearCenter,base+j+1,base+j);
+  }
+
+  const geo=new THREE.BufferGeometry();
+
+  geo.setAttribute(
+   'position',
+   new THREE.Float32BufferAttribute(vertices,3)
+  );
+
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mesh=new THREE.Mesh(geo,material);
+
+  mesh.castShadow=false;
+  mesh.receiveShadow=false;
+
+  carGroup.add(mesh);
+
+  return mesh;
  }
 
- carPart(carGroup,new THREE.BoxGeometry(.72,.2,.035),carTrim,0,.83,-2.25);
- carPart(carGroup,new THREE.BoxGeometry(.9,.12,.035),carChrome,0,.83,-2.28);
- carPart(carGroup,new THREE.BoxGeometry(1.35,.16,.12),carTrim,0,.48,0);
- carPart(carGroup,new THREE.BoxGeometry(1.55,.08,.08),carChrome,0,.47,-1.92);
- carPart(carGroup,new THREE.BoxGeometry(1.55,.08,.08),carChrome,0,.47,1.92);
+ // Deep metallic teal paint.
+ const bodyPaint=new THREE.MeshStandardMaterial({
+  color:0x075b68,
+  metalness:.82,
+  roughness:.2
+ });
+
+ const darkPaint=new THREE.MeshStandardMaterial({
+  color:0x101820,
+  metalness:.65,
+  roughness:.28
+ });
+
+ const carbon=new THREE.MeshStandardMaterial({
+  color:0x090d12,
+  metalness:.45,
+  roughness:.42
+ });
+
+ const glass=new THREE.MeshPhysicalMaterial({
+  color:0x122d40,
+  metalness:.35,
+  roughness:.12,
+  transparent:true,
+  opacity:.88,
+  clearcoat:1,
+  side:THREE.DoubleSide
+ });
+
+ const chrome=new THREE.MeshStandardMaterial({
+  color:0xc6e4ec,
+  metalness:.95,
+  roughness:.15
+ });
+
+ const neon=new THREE.MeshStandardMaterial({
+  color:0x42eaff,
+  emissive:0x19cfff,
+  emissiveIntensity:2.5,
+  metalness:.3,
+  roughness:.2
+ });
+
+ const redLED=new THREE.MeshStandardMaterial({
+  color:0xff172b,
+  emissive:0xff0018,
+  emissiveIntensity:3
+ });
+
+ const whiteLED=new THREE.MeshStandardMaterial({
+  color:0xffffff,
+  emissive:0xc9f4ff,
+  emissiveIntensity:3.5
+ });
+
+ // ==========================================
+ // SCULPTED MAIN BODY
+ // ==========================================
+
+ makeLoft([
+  {z:-2.28,width:.72,centerY:.65,height:.22},
+  {z:-2.12,width:.96,centerY:.68,height:.29},
+  {z:-1.75,width:1.04,centerY:.69,height:.31},
+  {z:-1.15,width:1.06,centerY:.70,height:.32},
+  {z:-.45,width:1.08,centerY:.70,height:.33},
+  {z:.55,width:1.08,centerY:.70,height:.33},
+  {z:1.25,width:1.04,centerY:.70,height:.31},
+  {z:1.85,width:.98,centerY:.68,height:.29},
+  {z:2.18,width:.84,centerY:.65,height:.24},
+  {z:2.28,width:.65,centerY:.63,height:.18}
+ ],bodyPaint,40);
+
+ // ==========================================
+ // CABIN + PANORAMIC GLASS
+ // ==========================================
+
+ makeLoft([
+  {z:-1.28,width:.70,centerY:1.03,height:.12},
+  {z:-.98,width:.76,centerY:1.29,height:.38},
+  {z:-.58,width:.78,centerY:1.45,height:.46},
+  {z:.38,width:.78,centerY:1.45,height:.46},
+  {z:.82,width:.74,centerY:1.30,height:.36},
+  {z:1.16,width:.68,centerY:1.03,height:.12}
+ ],bodyPaint,32);
+
+ // Large dark panoramic cabin glazing.
+ makeLoft([
+  {z:-1.06,width:.67,centerY:1.28,height:.31},
+  {z:-.73,width:.70,centerY:1.48,height:.35},
+  {z:.30,width:.70,centerY:1.48,height:.35},
+  {z:.75,width:.67,centerY:1.30,height:.29},
+  {z:1.00,width:.60,centerY:1.20,height:.20}
+ ],glass,32);
+
+ // Roof panel.
+ carPart(
+  carGroup,
+  new THREE.BoxGeometry(1.18,.055,.92),
+  darkPaint,
+  0,1.82,-.04
+ );
+
+ // ==========================================
+ // FRONT + REAR AERODYNAMICS
+ // ==========================================
+
+ // Front splitter.
+ carPart(
+  carGroup,
+  new THREE.BoxGeometry(1.95,.10,.32),
+  carbon,
+  0,.39,-2.20
+ );
+
+ // Rear diffuser.
+ carPart(
+  carGroup,
+  new THREE.BoxGeometry(1.82,.13,.38),
+  carbon,
+  0,.39,2.12
+ );
+
+ // Rear wing supports.
+ for(const side of [-1,1]){
+
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.07,.36,.07),
+   chrome,
+   side*.65,1.15,1.92
+  );
+ }
+
+ // Rear spoiler.
+ carPart(
+  carGroup,
+  new THREE.BoxGeometry(1.85,.09,.32),
+  darkPaint,
+  0,1.48,2.03
+ );
+
+ // ==========================================
+ // LIGHTS
+ // ==========================================
+
+ // Front futuristic headlights.
+ for(const side of [-1,1]){
+
+  const head=carPart(
+   carGroup,
+   new THREE.BoxGeometry(.48,.075,.12),
+   whiteLED,
+   side*.67,.86,-2.20
+  );
+
+  head.rotation.z=side*.08;
+
+  // Rear LED strips.
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.72,.075,.10),
+   redLED,
+   side*.48,.88,2.23
+  );
+
+  // Side glowing accent.
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.035,.045,1.35),
+   neon,
+   side*1.045,.59,.05
+  );
+
+  // Side mirrors.
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.20,.11,.22),
+   darkPaint,
+   side*1.12,1.22,-.83
+  );
+
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.12,.035,.16),
+   chrome,
+   side*1.15,1.24,-.83
+  );
+ }
+
+ // ==========================================
+ // FRONT GRILLE
+ // ==========================================
+
+ carPart(
+  carGroup,
+  new THREE.BoxGeometry(.78,.20,.045),
+  carbon,
+  0,.62,-2.25
+ );
+
+ carPart(
+  carGroup,
+  new THREE.BoxGeometry(.45,.035,.05),
+  neon,
+  0,.64,-2.28
+ );
+
+ // ==========================================
+ // HOOD DETAILS
+ // ==========================================
 
  for(const side of [-1,1]){
+
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.045,.018,.75),
+   chrome,
+   side*.62,.94,-1.65
+  );
+
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.045,.018,.55),
+   darkPaint,
+   side*.72,.94,-1.40
+  );
+ }
+
+ // ==========================================
+ // WHEELS
+ // ==========================================
+
+ for(const side of [-1,1]){
+
   for(const z of [-1.38,1.38]){
+
    const steeringPivot=new THREE.Group();
-   steeringPivot.position.set(side*1.03,.43,z);
+
+   steeringPivot.position.set(
+    side*1.03,.43,z
+   );
+
    carGroup.add(steeringPivot);
+
    const wheel=new THREE.Group();
+
    steeringPivot.add(wheel);
-   const tire=carPart(wheel,new THREE.CylinderGeometry(.4,.4,.24,28),tireMat,0,0,0);
+
+   // Tire.
+   const tire=carPart(
+    wheel,
+    new THREE.CylinderGeometry(.40,.40,.27,32),
+    tireMat,
+    0,0,0
+   );
+
    tire.rotation.z=Math.PI/2;
-   const hub=carPart(wheel,new THREE.CylinderGeometry(.2,.2,.26,20),carChrome,0,0,0);
+
+   // Alloy rim.
+   const rim=carPart(
+    wheel,
+    new THREE.CylinderGeometry(.255,.255,.29,32),
+    darkPaint,
+    0,0,0
+   );
+
+   rim.rotation.z=Math.PI/2;
+
+   // Metallic wheel hub.
+   const hub=carPart(
+    wheel,
+    new THREE.CylinderGeometry(.12,.12,.31,24),
+    chrome,
+    0,0,0
+   );
+
    hub.rotation.z=Math.PI/2;
-   const center=carPart(wheel,new THREE.CylinderGeometry(.075,.075,.28,16),carTrim,0,0,0);
-   center.rotation.z=Math.PI/2;
+
+   // Neon inner rim.
+   const rimGlow=carPart(
+    wheel,
+    new THREE.TorusGeometry(.22,.025,8,32),
+    neon,
+    0,0,0
+   );
+
+   rimGlow.rotation.y=Math.PI/2;
+
+   // Five wheel spokes.
+   for(let i=0;i<5;i++){
+
+    const angle=i*Math.PI*2/5;
+
+    const spoke=carPart(
+     wheel,
+     new THREE.BoxGeometry(.045,.32,.035),
+     chrome,
+     0,
+     Math.cos(angle)*.14,
+     Math.sin(angle)*.14
+    );
+
+    spoke.rotation.x=angle;
+   }
+
    carWheels.push(wheel);
-   if(z<0)frontWheelPivots.push(steeringPivot);
+
+   if(z<0){
+    frontWheelPivots.push(steeringPivot);
+   }
   }
  }
-}
 
+ // ==========================================
+ // FINAL BODY DETAILS
+ // ==========================================
+
+ // Door seams.
+ for(const side of [-1,1]){
+
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.012,.30,.72),
+   darkPaint,
+   side*1.025,.76,.25
+  );
+
+  // Door handles.
+  carPart(
+   carGroup,
+   new THREE.BoxGeometry(.04,.035,.20),
+   chrome,
+   side*1.035,.88,.55
+  );
+ }
+
+ // Front emblem.
+ carPart(
+  carGroup,
+  new THREE.SphereGeometry(.07,16,12),
+  chrome,
+  0,.87,-2.26
+ );
+
+      }
 buildCar();
 
 function toggleCar(){
