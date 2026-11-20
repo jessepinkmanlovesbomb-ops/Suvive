@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>DEEP BELOW</title>
+
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #000;
+  font-family: Arial, sans-serif;
+  touch-action: none;
+}
+canvas { display: block; }
+
+#title {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  color: #d7e4ed;
+  font-size: 22px;
+  letter-spacing: 5px;
+  text-shadow: 0 0 12px #4b879f;
+  pointer-events: none;
+}
+#message {
+  position: fixed;
+  top: 45%;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-size: 24px;
+  letter-spacing: 3px;
+  pointer-events: none;
+}
+#hint {
+  position: fixed;
+  bottom: 18px;
+  width: 100%;
+  text-align: center;
+  color: #9caeb9;
+  font-size: 12px;
+  pointer-events: none;
+}
+#controls {
+  position: fixed;
+  bottom: 25px;
+  left: 20px;
+  display: grid;
+  grid-template-columns: 48px 48px 48px;
+  grid-template-rows: 48px 48px 48px;
+  gap: 5px;
+}
+.ctrl, #jump {
+  border: 1px solid #91a8b8;
+  background: #172b3a99;
+  color: white;
+  border-radius: 12px;
+  font-size: 22px;
+  touch-action: none;
+}
+#up { grid-column: 2; grid-row: 1; }
+#left { grid-column: 1; grid-row: 2; }
+#down { grid-column: 2; grid-row: 2; }
+#right { grid-column: 3; grid-row: 2; }
+#jump {
+  position: fixed;
+  right: 25px;
+  bottom: 40px;
+  width: 75px;
+  height: 75px;
+  border-radius: 50%;
+  font-size: 14px;
+}
+#restart {
+  display: none;
+  position: fixed;
+  top: 55%;
+  left: 50%;
+  transform: translate(-50%,-50%);
+  padding: 15px 30px;
+  background: #183747;
+  color: white;
+  border: 1px solid #9bbacb;
+  border-radius: 8px;
+  font-size: 16px;
+}
+</style>
+</head>
+
+<body>
+<div id="title">DEEP BELOW</div>
+<div id="message">FIND THE OTHER SIDE</div>
+<div id="hint">WASD / ARROWS TO MOVE · SPACE TO JUMP · DRAG TO LOOK</div>
+
+<div id="controls">
+  <button class="ctrl" id="up">▲</button>
+  <button class="ctrl" id="left">◀</button>
+  <button class="ctrl" id="down">▼</button>
+  <button class="ctrl" id="right">▶</button>
+</div>
+<button id="jump">JUMP</button>
+<button id="restart">TRY AGAIN</button>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020812);
+scene.fog = new THREE.FogExp2(0x020812, 0.018);
+
+const camera = new THREE.PerspectiveCamera(
+  75, innerWidth / innerHeight, 0.1, 300
+);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+// LIGHTING
+scene.add(new THREE.HemisphereLight(0x7899b5, 0x07111b, 1.2));
+
+const moon = new THREE.DirectionalLight(0x9dbbd0, 1.5);
+moon.position.set(-8, 20, -10);
+moon.castShadow = true;
+scene.add(moon);
+
+// WATER
+const waterGeometry = new THREE.PlaneGeometry(250, 250, 80, 80);
+const waterMaterial = new THREE.MeshStandardMaterial({
+  color: 0x031d2a,
+  roughness: 0.23,
+  metalness: 0.55,
+  transparent: true,
+  opacity: 0.92
+});
+const water = new THREE.Mesh(waterGeometry, waterMaterial);
+water.rotation.x = -Math.PI / 2;
+water.position.y = 0;
+scene.add(water);
+
+// PLATFORMS
+const platforms = [];
+
+function makePlatform(x, z, width, depth) {
+  const group = new THREE.Group();
+
+  const top = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.5, depth),
+    new THREE.MeshStandardMaterial({
+      color: 0x343b3c,
+      roughness: 0.9
+    })
+  );
+  top.position.y = 0.25;
+  top.castShadow = true;
+  top.receiveShadow = true;
+  group.add(top);
+
+  const underside = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 0.85, 0.5, depth * 0.85),
+    new THREE.MeshStandardMaterial({color:0x101c21})
+  );
+  underside.position.y = -0.2;
+  group.add(underside);
+
+  // Small warning lights
+  const glow = new THREE.Mesh(
+    new THREE.BoxGeometry(width * 0.5, 0.035, 0.04),
+    new THREE.MeshBasicMaterial({color:0x3b8194})
+  );
+  glow.position.set(0, 0.52, depth / 2 - 0.1);
+  group.add(glow);
+
+  group.position.set(x, 0, z);
+  scene.add(group);
+
+  platforms.push({
+    x, z, width, depth, top: 0.5
+  });
+}
+
+makePlatform(0, 2, 9, 9);
+makePlatform(1, -8, 5, 5);
+makePlatform(-2, -17, 4.5, 4.5);
+makePlatform(2, -26, 4.5, 4.5);
+makePlatform(0, -36, 5, 5);
+makePlatform(-3, -46, 4, 4);
+makePlatform(1, -56, 5, 5);
+makePlatform(0, -67, 9, 9);
+
+// DISTANT ROCKS
+for (let i=0; i<35; i++) {
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(1 + Math.random()*3, 0),
+    new THREE.MeshStandardMaterial({color:0x101d27, roughness:1})
+  );
+  rock.position.set(
+    (Math.random()-0.5)*100,
+    -2-Math.random()*3,
+    -Math.random()*100
+  );
+  rock.scale.y = 0.7;
+  scene.add(rock);
+}
+
+// PLAYER
+const player = {
+  x: 0,
+  z: 2,
+  y: 0.5,
+  vy: 0,
+  grounded: true,
+  yaw: 0,
+  pitch: 0
+};
+
+const keys = {};
+let gameOver = false;
+let inWater = false;
+let won = false;
+
+function jump() {
+  if (player.grounded && !gameOver && !inWater) {
+    player.vy = 8;
+    player.grounded = false;
+  }
+}
+
+// KEYBOARD
+addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.code === "Space") jump();
+});
+addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+// MOBILE BUTTONS
+const touchKeys = {};
+function bindButton(id, key) {
+  const el = document.getElementById(id);
+  el.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    touchKeys[key] = true;
+  });
+  for (const ev of ["pointerup","pointercancel","pointerleave"]) {
+    el.addEventListener(ev, () => touchKeys[key] = false);
+  }
+}
+bindButton("up","w");
+bindButton("down","s");
+bindButton("left","a");
+bindButton("right","d");
+
+document.getElementById("jump").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  jump();
+});
+
+// CAMERA LOOK
+let dragging = false;
+let lastX = 0;
+let lastY = 0;
+
+renderer.domElement.addEventListener("pointerdown", e => {
+  dragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+addEventListener("pointerup", () => dragging = false);
+addEventListener("pointermove", e => {
+  if (!dragging || gameOver) return;
+  const dx = e.clientX - lastX;
+  const dy = e.clientY - lastY;
+  player.yaw -= dx * 0.004;
+  player.pitch -= dy * 0.003;
+  player.pitch = THREE.MathUtils.clamp(player.pitch, -0.8, 0.8);
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+
+// MONSTER
+const monster = new THREE.Group();
+
+const body = new THREE.Mesh(
+  new THREE.SphereGeometry(1.6, 24, 16),
+  new THREE.MeshStandardMaterial({
+    color:0x050b0e,
+    roughness:0.25,
+    metalness:0.3
+  })
+);
+body.scale.set(1.5,0.7,1.9);
+monster.add(body);
+
+for (let i=0; i<4; i++) {
+  const tentacle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08,0.25,3,8),
+    new THREE.MeshStandardMaterial({color:0x081015})
+  );
+  tentacle.position.set((i-1.5)*0.7,-1.4,0.5);
+  tentacle.rotation.z = (i-1.5)*0.35;
+  monster.add(tentacle);
+}
+
+const eyeMaterial = new THREE.MeshBasicMaterial({color:0xa90020});
+for (let i=0; i<2; i++) {
+  const eye = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13,12,12),
+    eyeMaterial
+  );
+  eye.position.set(i===0?-0.65:0.65,0.3,-2.2);
+  monster.add(eye);
+}
+monster.visible = false;
+scene.add(monster);
+
+let monsterSpeed = 4;
+
+function startHunt() {
+  if (inWater || gameOver) return;
+  inWater = true;
+  monster.visible = true;
+  monster.position.set(player.x, -0.2, player.z + 13);
+  document.getElementById("message").textContent = "SOMETHING HEARD YOU...";
+}
+
+// GAME OVER
+function endGame() {
+  gameOver = true;
+  document.getElementById("message").textContent = "THE DEEP HAS CLAIMED YOU";
+  document.getElementById("restart").style.display = "block";
+}
+
+document.getElementById("restart").onclick = () => location.reload();
+
+// WIN
+function winGame() {
+  won = true;
+  gameOver = true;
+  document.getElementById("message").textContent = "YOU MADE IT OUT";
+}
+
+// MAIN LOOP
+const clock = new THREE.Clock();
+
+function update() {
+  requestAnimationFrame(update);
+  const dt = Math.min(clock.getDelta(), 0.04);
+  const t = clock.elapsedTime;
+
+  // WATER MOTION
+  const pos = waterGeometry.attributes.position;
+  for (let i=0; i<pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    pos.setZ(i, Math.sin(x*0.12+t)*0.09 + Math.cos(y*0.14+t*0.8)*0.07);
+  }
+  pos.needsUpdate = true;
+  waterGeometry.computeVertexNormals();
+
+  if (!gameOver) {
+    let forward = 0;
+    let sideways = 0;
+
+    if (keys.w || keys.arrowup || touchKeys.w) forward += 1;
+    if (keys.s || keys.arrowdown || touchKeys.s) forward -= 1;
+    if (keys.a || keys.arrowleft || touchKeys.a) sideways -= 1;
+    if (keys.d || keys.arrowright || touchKeys.d) sideways += 1;
+
+    const length = Math.hypot(forward, sideways);
+    if (length > 0) {
+      forward /= length;
+      sideways /= length;
+    }
+
+    const speed = 6;
+    const dx = (sideways*Math.cos(player.yaw) -
+                forward*Math.sin(player.yaw))*speed*dt;
+    const dz = (-sideways*Math.sin(player.yaw) -
+                forward*Math.cos(player.yaw))*speed*dt;
+
+    player.x += dx;
+    player.z += dz;
+
+    // GRAVITY
+    const oldY = player.y;
+    player.vy -= 20*dt;
+    player.y += player.vy*dt;
+    player.grounded = false;
+
+    // PLATFORM COLLISION
+    for (const p of platforms) {
+      const inside =
+        Math.abs(player.x-p.x) < p.width/2-0.15 &&
+        Math.abs(player.z-p.z) < p.depth/2-0.15;
+
+      if (inside && player.vy <= 0 &&
+          oldY >= p.top && player.y <= p.top) {
+        player.y = p.top;
+        player.vy = 0;
+        player.grounded = true;
+      }
+    }
+
+    // WATER TOUCH
+    if (player.y < 0.15 && !inWater) {
+      startHunt();
+    }
+
+    if (player.y < -5) {
+      if (!inWater) startHunt();
+    }
+
+    // MONSTER CHASE
+    if (inWater) {
+      const dxm = player.x-monster.position.x;
+      const dzm = player.z-monster.position.z;
+      const dist = Math.hypot(dxm,dzm);
+      if (dist > 0.1) {
+        monster.position.x += dxm/dist*monsterSpeed*dt;
+        monster.position.z += dzm/dist*monsterSpeed*dt;
+      }
+      monster.position.y = -0.1 + Math.sin(t*3)*0.25;
+      monster.rotation.y = Math.atan2(dxm,dzm);
+      if (dist < 2.2) endGame();
+    }
+
+    // FINISH PLATFORM
+    if (player.z < -64 && player.grounded && !won) {
+      winGame();
+    }
+  }
+
+  // CAMERA
+  camera.position.set(player.x, player.y+1.6, player.z);
+  camera.rotation.order = "YXZ";
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
+  // PLATFORM LIGHTING FLICKER
+  renderer.render(scene,camera);
+}
+
+update();
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
