@@ -1,0 +1,767 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>DEEP BELOW</title>
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: #05090b url("1795157900510.jpg") center 52% / cover no-repeat;
+  color: white;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+#ocean {
+  display: none;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg,rgba(0,5,12,.88),rgba(0,5,12,.25) 65%,rgba(0,5,12,.45)),
+    linear-gradient(0deg,rgba(0,4,10,.9),transparent 55%);
+}
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: inset 0 0 160px 35px #000;
+}
+
+header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 30px 5%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 5;
+}
+
+.logo-small {
+  font-family: 'Cinzel', serif;
+  letter-spacing: 5px;
+  font-size: 13px;
+  color: #b9d2df;
+}
+
+.status {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: #718d9d;
+}
+
+.status span {
+  color: #73c7b4;
+}
+
+main {
+  position: absolute;
+  z-index: 4;
+  left: 10%;
+  top: 50%;
+  transform: translateY(-48%);
+  width: min(440px, 85%);
+}
+
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 6px;
+  color: #91b6c7;
+  margin-bottom: 22px;
+}
+
+h1 {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(48px, 9vw, 88px);
+  font-weight: 500;
+  line-height: 1.04;
+  letter-spacing: 5px;
+  color: #e5f1f5;
+  text-shadow: 0 0 35px #7eb2c433;
+}
+
+h1 span {
+  display: block;
+  color: #8eafbf;
+}
+
+.subtitle {
+  margin-top: 20px;
+  color: #8a9ba7;
+  font-size: 12px;
+  line-height: 2;
+  letter-spacing: 2px;
+}
+
+.line {
+  width: 55px;
+  height: 1px;
+  background: #6e9daf;
+  margin: 28px 0;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 245px;
+}
+
+.menu button {
+  position: relative;
+  border: none;
+  background: transparent;
+  color: #a9bbc6;
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 3px;
+  padding: 13px 17px;
+  cursor: pointer;
+  transition: .25s;
+  font-family: 'Inter', sans-serif;
+}
+
+.menu button::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 0;
+  background: #8ed0df;
+  transition: .25s;
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  color: white;
+  padding-left: 27px;
+  background: linear-gradient(90deg,#82c3d322,transparent);
+}
+
+.menu button:hover::before,
+.menu button:focus-visible::before {
+  height: 65%;
+}
+
+.menu .primary {
+  color: #e5f5fa;
+  border: 1px solid #91b8c655;
+  background: #6f9fb51c;
+}
+
+footer {
+  position: absolute;
+  bottom: 25px;
+  left: 5%;
+  right: 5%;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  color: #667985;
+  font-size: 9px;
+  letter-spacing: 2px;
+}
+
+#panel {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: #01070ddd;
+  backdrop-filter: blur(12px);
+}
+
+.window {
+  width: min(440px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  border: 1px solid #7398a744;
+  background: linear-gradient(145deg,#10212c,#071019);
+  padding: 32px;
+  box-shadow: 0 20px 80px #000;
+}
+
+.window h2 {
+  font-family: 'Cinzel', serif;
+  letter-spacing: 4px;
+  font-weight: 500;
+  font-size: 25px;
+  margin-bottom: 10px;
+}
+
+.window p {
+  color: #91a5b2;
+  font-size: 12px;
+  line-height: 1.9;
+  margin-bottom: 22px;
+}
+
+.window label {
+  display: flex;
+  justify-content: space-between;
+  color: #b8cbd5;
+  font-size: 12px;
+  margin: 22px 0 10px;
+  letter-spacing: 1px;
+}
+
+input[type=range] {
+  width: 100%;
+  accent-color: #86b9cb;
+}
+
+select {
+  background: #142b38;
+  color: white;
+  border: 1px solid #527387;
+  padding: 9px;
+  width: 100%;
+}
+
+.action {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin-top: 13px;
+  border: 1px solid #7095a7;
+  background: #183444;
+  color: white;
+  letter-spacing: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.action.secondary {
+  background: transparent;
+  border-color: #354c59;
+  color: #a5b9c3;
+}
+
+#briefing .window {
+  text-align: center;
+}
+
+.big-number {
+  font-family: 'Cinzel', serif;
+  font-size: 44px;
+  color: #8bb9c9;
+  margin: 15px;
+}
+
+@media(max-width:600px) {
+  header { padding: 22px 7%; }
+  main {
+    left: 7%;
+    top: 47%;
+    width: 88%;
+  }
+  h1 { font-size: 53px; }
+  .subtitle { font-size: 10px; }
+  .menu { width: 230px; }
+  footer { font-size: 8px; }
+  .status { font-size: 8px; }
+}
+
+/* A quieter, more tactile expedition-log treatment. */
+:root {
+  --ink: #e6e0d1;
+  --muted: #a3a69c;
+  --accent: #9eb8c5;
+  --hairline: rgba(212, 205, 185, .22);
+}
+
+body {
+  background: #05090b url("1795157900510.jpg") center 52% / cover no-repeat;
+  color: var(--ink);
+}
+
+.overlay {
+  background:
+    linear-gradient(90deg, rgba(3, 8, 15, .78), rgba(3, 8, 15, .32) 52%, rgba(3, 8, 15, .12)),
+    linear-gradient(0deg, rgba(3, 8, 15, .48), transparent 52%);
+}
+
+.vignette {
+  box-shadow: inset 0 0 130px 14px rgba(0, 0, 0, .72);
+}
+
+.logo-small,
+h1,
+.window h2,
+.big-number {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.logo-small {
+  font-size: 15px;
+  letter-spacing: 3px;
+  color: #d1cabb;
+}
+
+.status,
+.eyebrow,
+footer,
+.menu button {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.status {
+  letter-spacing: 1.5px;
+  color: #aaa99d;
+}
+
+.status span {
+  color: var(--accent);
+}
+
+main {
+  width: min(470px, 86%);
+  transform: translateY(-45%);
+}
+
+.eyebrow {
+  color: #c2d0d7;
+  font-size: 10px;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+
+h1 {
+  font-size: clamp(54px, 7vw, 84px);
+  line-height: .92;
+  letter-spacing: -3px;
+  font-weight: 600;
+  color: #edf2f4;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, .35);
+}
+
+h1 span {
+  color: #c6d0d4;
+  font-style: normal;
+  font-weight: 400;
+  margin-left: 0;
+}
+
+.subtitle {
+  margin-top: 27px;
+  color: #b1b3aa;
+  font-size: 11px;
+  line-height: 1.9;
+  letter-spacing: 1.4px;
+}
+
+.line {
+  width: 34px;
+  background: var(--accent);
+  margin: 23px 0 17px;
+}
+
+.menu {
+  gap: 0;
+  width: 260px;
+  border-top: 1px solid var(--hairline);
+}
+
+.menu button {
+  border-bottom: 1px solid var(--hairline);
+  color: #d0d8db;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  padding: 11px 12px;
+  transition: color .2s, background .2s, padding .2s;
+}
+
+.menu button::before {
+  display: none;
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  color: #f2e9d9;
+  padding-left: 19px;
+  background: rgba(193, 138, 97, .09);
+}
+
+.menu .primary {
+  color: #e6c9ae;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+}
+
+footer {
+  color: #999b92;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+#panel,
+#briefing {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: rgba(3, 8, 10, .88);
+  backdrop-filter: blur(8px);
+}
+
+.window {
+  border: 1px solid rgba(212, 205, 185, .25);
+  background: linear-gradient(145deg, #151d1e, #080e11);
+  box-shadow: 0 18px 70px rgba(0, 0, 0, .55);
+}
+
+.window h2 {
+  color: #e6e0d1;
+  font-size: 32px;
+  letter-spacing: 2px;
+}
+
+.window p {
+  color: #b3b4ab;
+}
+
+.action {
+  border-color: rgba(193, 138, 97, .55);
+  background: rgba(193, 138, 97, .13);
+  color: #e6e0d1;
+  font-family: 'DM Mono', monospace;
+}
+
+.action.secondary {
+  border-color: var(--hairline);
+  color: #b5b5aa;
+}
+
+#briefing .window {
+  text-align: center;
+}
+
+#briefing .big-number {
+  color: var(--accent);
+}
+
+@media (max-width: 600px) {
+  main { top: 46%; transform: translateY(-42%); }
+  h1 { font-size: clamp(48px, 13vw, 66px); }
+  h1 span { margin-left: 0; }
+  .subtitle { font-size: 9px; }
+  footer { letter-spacing: .4px; }
+  footer div:last-child { display: none; }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  header { padding-top: 14px; padding-bottom: 14px; }
+  main { top: 52%; transform: translateY(-48%); }
+  h1 { font-size: clamp(42px, 9vh, 64px); }
+  .subtitle { margin-top: 14px; }
+  .line { margin: 14px 0 10px; }
+  .menu button { padding-top: 7px; padding-bottom: 7px; }
+  footer { bottom: 12px; }
+}
+
+</style>
+</head>
+
+<body>
+
+<canvas id="ocean"></canvas>
+<div class="overlay"></div>
+<div class="vignette"></div>
+
+<header>
+  <div class="logo-small">DB / STUDIOS</div>
+  <div class="status"><span>●</span> SIGNAL UNSTABLE</div>
+</header>
+
+<main>
+  <div class="eyebrow">FIELD NOTE 01 &nbsp; / &nbsp; OPEN WATER</div>
+
+  <h1>DEEP <span>BELOW</span></h1>
+
+  <div class="subtitle">
+    THE WATER IS NOT EMPTY.<br>
+    SOMETHING IS WAITING BELOW.
+  </div>
+
+  <div class="line"></div>
+
+  <div class="menu">
+    <button class="primary" onclick="openBriefing()">▶ &nbsp; NEW GAME</button>
+    <button onclick="openPanel('continue')">CONTINUE</button>
+    <button onclick="openPanel('settings')">SETTINGS</button>
+    <button onclick="openPanel('controls')">HOW TO PLAY</button>
+    <button onclick="openPanel('credits')">CREDITS</button>
+    <button onclick="exitGame()">EXIT</button>
+  </div>
+</main>
+
+<footer>
+  <div>DEEP BELOW &nbsp;·&nbsp; EXPEDITION LOG</div>
+  <div>LAST SIGNAL RECEIVED &nbsp; 04:17</div>
+</footer>
+
+<div id="panel">
+  <div class="window" id="panelContent"></div>
+</div>
+
+<div id="briefing">
+  <div class="window">
+    <div class="eyebrow">MISSION 01</div>
+    <h2>THE CROSSING</h2>
+    <div class="big-number">01</div>
+    <p>
+      An endless stretch of dark water separates you
+      from safety. Scattered platforms are your only
+      path forward.<br><br>
+      Do not fall. Do not look down for too long.
+      Something lives beneath the surface.
+    </p>
+    <button class="action" onclick="startGame()">BEGIN JOURNEY</button>
+    <button class="action secondary" onclick="closeBriefing()">BACK</button>
+  </div>
+</div>
+
+<script>
+// ATMOSPHERIC ANIMATED OCEAN
+const canvas = document.getElementById("ocean");
+const ctx = canvas.getContext("2d");
+
+let W, H, time = 0;
+
+function resize() {
+  W = canvas.width = innerWidth * devicePixelRatio;
+  H = canvas.height = innerHeight * devicePixelRatio;
+  canvas.style.width = innerWidth + "px";
+  canvas.style.height = innerHeight + "px";
+}
+resize();
+addEventListener("resize", resize);
+
+const stars = Array.from({length:100}, () => ({
+  x:Math.random(),
+  y:Math.random()*0.55,
+  s:Math.random()*1.5,
+  a:Math.random()
+}));
+
+function draw() {
+  time += 0.008;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+
+  const w = innerWidth, h = innerHeight;
+
+  const sky = ctx.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0,"#020811");
+  sky.addColorStop(.5,"#09202c");
+  sky.addColorStop(1,"#01070d");
+  ctx.fillStyle=sky;
+  ctx.fillRect(0,0,w,h);
+
+  // Stars
+  for(const s of stars) {
+    ctx.globalAlpha = .3 + Math.sin(time*2+s.a*10)*.2;
+    ctx.fillStyle="#b9d8e6";
+    ctx.fillRect(s.x*w,s.y*h,s.s,s.s);
+  }
+  ctx.globalAlpha=1;
+
+  // Moon
+  const moonX=w*.76, moonY=h*.24;
+  const glow=ctx.createRadialGradient(moonX,moonY,5,moonX,moonY,160);
+  glow.addColorStop(0,"#a9d1df55");
+  glow.addColorStop(1,"#a9d1df00");
+  ctx.fillStyle=glow;
+  ctx.fillRect(moonX-160,moonY-160,320,320);
+
+  ctx.beginPath();
+  ctx.arc(moonX,moonY,38,0,Math.PI*2);
+  ctx.fillStyle="#c0d5db";
+  ctx.fill();
+
+  // Water
+  const horizon=h*.57;
+  const waterGrad=ctx.createLinearGradient(0,horizon,0,h);
+  waterGrad.addColorStop(0,"#173b4b");
+  waterGrad.addColorStop(.4,"#071e2b");
+  waterGrad.addColorStop(1,"#01070d");
+  ctx.fillStyle=waterGrad;
+  ctx.fillRect(0,horizon,w,h-horizon);
+
+  // Water ripples
+  for(let i=0;i<30;i++) {
+    const y=horizon+i*i*0.45;
+    const width=(i*13+20)*1.2;
+    const x=w*.5 + Math.sin(time+i*.4)*width*.4;
+    ctx.strokeStyle=`rgba(120,180,195,${.04+i*.001})`;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.ellipse(x,y,width,2+i*.13,0,0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  // Distant platforms
+  for(let i=0;i<5;i++) {
+    const x=w*.49+(i-2)*85;
+    const y=horizon+35+i*14;
+    const size=25+i*9;
+    ctx.fillStyle="#14252b";
+    ctx.fillRect(x-size,y,size*2,7+i*2);
+    ctx.strokeStyle="#648b95";
+    ctx.strokeRect(x-size,y,size*2,7+i*2);
+  }
+
+  // Distant monster shadow
+  ctx.save();
+  ctx.globalAlpha=.18;
+  ctx.fillStyle="#000308";
+  ctx.beginPath();
+  ctx.ellipse(w*.79,h*.69,60,18,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(w*.79,h*.66,17,34,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  requestAnimationFrame(draw);
+}
+draw();
+
+// MENU SYSTEM
+const panel = document.getElementById("panel");
+const content = document.getElementById("panelContent");
+const briefing = document.getElementById("briefing");
+
+function openPanel(type) {
+  panel.style.display="flex";
+
+  const pages = {
+    settings: `
+      <div class="eyebrow">CONFIGURATION</div>
+      <h2>SETTINGS</h2>
+
+      <label>MASTER VOLUME <span id="masterVal">80%</span></label>
+      <input type="range" min="0" max="100" value="80"
+      oninput="document.getElementById('masterVal').textContent=this.value+'%'">
+
+      <label>MUSIC VOLUME <span id="musicVal">70%</span></label>
+      <input type="range" min="0" max="100" value="70"
+      oninput="document.getElementById('musicVal').textContent=this.value+'%'">
+
+      <label>SOUND EFFECTS <span id="sfxVal">90%</span></label>
+      <input type="range" min="0" max="100" value="90"
+      oninput="document.getElementById('sfxVal').textContent=this.value+'%'">
+
+      <label>GRAPHICS QUALITY</label>
+      <select id="quality">
+        <option>Low</option>
+        <option selected>Medium</option>
+        <option>High</option>
+      </select>
+
+      <label>LOOK SENSITIVITY</label>
+      <input type="range" min="1" max="100" value="50">
+
+      <button class="action" onclick="closePanel()">SAVE SETTINGS</button>
+      <button class="action secondary" onclick="closePanel()">BACK</button>
+    `,
+
+    controls: `
+      <div class="eyebrow">SURVIVAL GUIDE</div>
+      <h2>HOW TO PLAY</h2>
+      <p>
+        <b>MOVEMENT</b><br>
+        WASD / Arrow keys / Mobile buttons<br><br>
+        <b>JUMP</b><br>
+        Space / Jump button<br><br>
+        <b>LOOK AROUND</b><br>
+        Mouse / Touch and drag<br><br>
+        <b>OBJECTIVE</b><br>
+        Cross the water using the platforms.
+        Avoid falling into the water. Something
+        beneath the surface is hunting you.
+      </p>
+      <button class="action" onclick="closePanel()">GOT IT</button>
+    `,
+
+    credits: `
+      <div class="eyebrow">THE PEOPLE BEHIND IT</div>
+      <h2>CREDITS</h2>
+      <p>
+        <b>GAME TITLE</b><br>DEEP BELOW<br><br>
+        <b>DEVELOPMENT</b><br>Independent Game Project<br><br>
+        <b>ENGINE</b><br>Three.js<br><br>
+        <b>ART & AUDIO</b><br>To be announced
+      </p>
+      <button class="action" onclick="closePanel()">BACK</button>
+    `,
+
+    continue: `
+      <div class="eyebrow">SAVE SYSTEM</div>
+      <h2>CONTINUE</h2>
+      <p>No saved journey found yet.<br><br>Start a new journey to begin.</p>
+      <button class="action" onclick="closePanel();openBriefing()">NEW GAME</button>
+      <button class="action secondary" onclick="closePanel()">BACK</button>
+    `
+  };
+
+  content.innerHTML=pages[type] || "";
+}
+
+function closePanel() {
+  panel.style.display="none";
+}
+
+function openBriefing() {
+  briefing.style.display="flex";
+}
+
+function closeBriefing() {
+  briefing.style.display="none";
+}
+
+function startGame() {
+  briefing.style.display="none";
+  alert("GAMEPLAY WILL BE CONNECTED IN THE NEXT DEVELOPMENT STAGE.");
+}
+
+function exitGame() {
+  alert("Thanks for playing DEEP BELOW.");
+}
+
+// Click outside panel to close
+panel.addEventListener("click", e => {
+  if(e.target===panel) closePanel();
+});
+</script>
+
+</body>
+</html>
